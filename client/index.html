@@ -3215,6 +3215,28 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   html.vaultlix-native-ios .vault-list-empty{font-size:16px;line-height:1.6}
   html.vaultlix-native-ios .vault-list-empty strong{font-size:21px}
 }
+
+/* ── VAULTLIX MOTION LANGUAGE ─────────────────────────────────────────
+   Short transform-only motion adds warmth without delaying chat actions. */
+@keyframes vx-screen-enter{from{opacity:0;transform:translate3d(0,9px,0) scale(.995)}to{opacity:1;transform:none}}
+@keyframes vx-row-enter{from{opacity:0;transform:translate3d(0,12px,0)}to{opacity:1;transform:none}}
+@keyframes vx-sheet-enter{from{opacity:0;transform:translate3d(0,30px,0) scale(.97)}to{opacity:1;transform:none}}
+@keyframes vx-choice-pop{0%{transform:scale(.96)}65%{transform:scale(1.025)}100%{transform:scale(1)}}
+@keyframes vx-icon-bloom{0%{transform:scale(.82) rotate(-5deg)}70%{transform:scale(1.08) rotate(2deg)}100%{transform:scale(1)}}
+.screen.ui-entering:not(#s-chat){animation:vx-screen-enter .28s cubic-bezier(.22,.8,.24,1) both}
+#s-vault-list.ui-entering .vault-list-row{animation:vx-row-enter .32s cubic-bezier(.22,.8,.24,1) both;animation-delay:var(--vx-delay,0ms)}
+.settings-panel.ui-category-enter .settings-category-page.active,.settings-panel.ui-category-enter .settings-section:not([style*="display: none"]){animation:vx-screen-enter .24s cubic-bezier(.22,.8,.24,1) both}
+.settings-panel.open .settings-menu .settings-link-row{animation:vx-row-enter .3s cubic-bezier(.22,.8,.24,1) both;animation-delay:var(--vx-delay,0ms)}
+.settings-panel.open .settings-menu .settings-link-row:nth-child(2){--vx-delay:22ms}.settings-panel.open .settings-menu .settings-link-row:nth-child(3){--vx-delay:44ms}.settings-panel.open .settings-menu .settings-link-row:nth-child(4){--vx-delay:66ms}.settings-panel.open .settings-menu .settings-link-row:nth-child(5){--vx-delay:88ms}.settings-panel.open .settings-menu .settings-link-row:nth-child(6){--vx-delay:110ms}.settings-panel.open .settings-menu .settings-link-row:nth-child(7){--vx-delay:132ms}.settings-panel.open .settings-menu .settings-link-row:nth-child(8){--vx-delay:154ms}.settings-panel.open .settings-menu .settings-link-row:nth-child(9){--vx-delay:176ms}
+.account-overlay.open .account-card,.group-create-overlay.open .group-create-card,.group-members.open .group-members-card{animation:vx-sheet-enter .34s cubic-bezier(.2,.9,.24,1) both;transform-origin:center bottom}
+.daily-look-style,.daily-look-collection,.settings-link-row,.vault-list-action,.group-chat-head button,.group-chat-footer button{transition:transform .16s cubic-bezier(.2,.8,.2,1),box-shadow .2s ease,background-color .2s ease,border-color .2s ease,filter .2s ease;-webkit-tap-highlight-color:transparent}
+.daily-look-style{animation:vx-row-enter .28s cubic-bezier(.22,.8,.24,1) both;animation-delay:var(--vx-delay,0ms)}
+.daily-look-style.selected,.daily-look-collection.selected{animation:vx-choice-pop .3s cubic-bezier(.2,.9,.24,1) both;box-shadow:0 9px 22px rgba(107,31,58,.13)}
+.daily-look-style.selected:after{content:'\2713';position:absolute;right:8px;bottom:8px;width:17px;height:17px;border-radius:50%;display:grid;place-items:center;background:#6B1F3A;color:#fff;font:750 10px/1 Inter,sans-serif;animation:vx-icon-bloom .32s cubic-bezier(.2,.9,.24,1) both}
+.daily-look-style:active,.daily-look-collection:active,.settings-link-row:active,.vault-list-action:active,.group-chat-head button:active,.group-chat-footer button:active{transform:scale(.96);filter:brightness(.98)}
+.settings-link-row:active .settings-row-icon{animation:vx-icon-bloom .28s cubic-bezier(.2,.9,.24,1)}
+@media(hover:hover){.daily-look-style:hover,.settings-menu .settings-link-row:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(70,38,49,.09)}}
+@media(prefers-reduced-motion:reduce){.screen.ui-entering:not(#s-chat),#s-vault-list.ui-entering .vault-list-row,.settings-panel.ui-category-enter .settings-category-page.active,.settings-panel.ui-category-enter .settings-section,.settings-panel.open .settings-menu .settings-link-row,.account-overlay.open .account-card,.group-create-overlay.open .group-create-card,.group-members.open .group-members-card,.daily-look-style,.daily-look-style.selected,.daily-look-collection.selected,.daily-look-style.selected:after,.settings-link-row:active .settings-row-icon{animation:none!important}.daily-look-style,.daily-look-collection,.settings-link-row,.vault-list-action,.group-chat-head button,.group-chat-footer button{transition:none!important}}
 </style>
 <style>
 /* The message box is not ringed when it is tapped: the page-wide focus outline
@@ -11546,7 +11568,14 @@ function showScreen(id) {
     if (chatBody) chatBody.innerHTML = '<div class="typing-indicator peer-typing" id="typing-indicator" aria-label="Typing"><span class="peer-typing-avatar" id="typing-avatar"></span><span class="peer-typing-dots"><i class="t-dot"></i><i class="t-dot"></i><i class="t-dot"></i></span></div>';
   }
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
+  const nextScreen = document.getElementById(id);
+  nextScreen.classList.add('active');
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    nextScreen.classList.remove('ui-entering');
+    void nextScreen.offsetWidth;
+    nextScreen.classList.add('ui-entering');
+    window.setTimeout(() => nextScreen.classList.remove('ui-entering'), 650);
+  }
   if (id === 's-chat') requestAnimationFrame(() => flushPendingEmojiEffect(getActiveRoom()));
   if (id === 's-setup') {
     const btn = document.getElementById('setup-btn');
@@ -12785,6 +12814,13 @@ function openSettingsCategory(category) {
   document.getElementById('anon-link-section').style.display = 'none';
   const deleteRow = document.getElementById('delete-account-row');
   if (deleteRow) deleteRow.style.display = category === 'privacy' && loadAccountState() ? '' : 'none';
+  const panel = document.getElementById('settings-panel');
+  if (panel && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    panel.classList.remove('ui-category-enter');
+    void panel.offsetWidth;
+    panel.classList.add('ui-category-enter');
+    window.setTimeout(() => panel.classList.remove('ui-category-enter'), 360);
+  }
 }
 
 function openSettings(mode = 'general', initialCategory = null) {
@@ -14026,10 +14062,11 @@ function renderDailyLookStyles(styles = []) {
     const input = document.getElementById('daily-look-profile-input');
     if (input) { input.value = ''; input.click(); }
   };
-  const styleButtons = visibleStyles.map(style => {
+  const styleButtons = visibleStyles.map((style, index) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `daily-look-style${style.id === dailyLookStyleId ? ' selected' : ''}`;
+    button.style.setProperty('--vx-delay', `${index * 32}ms`);
     button.setAttribute('aria-pressed', style.id === dailyLookStyleId ? 'true' : 'false');
     button.disabled = style.available === false;
     const title = document.createElement('strong'); title.textContent = style.name;
@@ -14039,6 +14076,7 @@ function renderDailyLookStyles(styles = []) {
     button.onclick = () => { dailyLookStyleId = style.id; renderDailyLookStyles(styles); };
     return button;
   });
+  gallery.style.setProperty('--vx-delay', `${styleButtons.length * 32}ms`);
   if (dailyLookCollectionId === 'Face Booster') styleButtons.push(gallery);
   holder.replaceChildren(...styleButtons);
 }
@@ -21354,6 +21392,9 @@ function renderVaultList() {
   const previousScrollTop = body.scrollTop;
   body._vaultlixChatListHtml = html;
   body.innerHTML = html;
+  body.querySelectorAll('.vault-list-row').forEach((row, index) => {
+    row.style.setProperty('--vx-delay', `${Math.min(index, 8) * 26}ms`);
+  });
   hydrateRequestIntros().catch(() => {});
   if (!pendingConnectionFocusId && previousScrollTop > 0) {
     body.scrollTop = Math.min(previousScrollTop, Math.max(0, body.scrollHeight - body.clientHeight));

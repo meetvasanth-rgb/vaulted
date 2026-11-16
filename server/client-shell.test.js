@@ -59,6 +59,17 @@ test('service worker recognizes the generated immutable assets', () => {
   }
 });
 
+test('the interface motion layer animates screens, sheets and portrait choices accessibly', () => {
+  assert.match(source, /@keyframes vx-screen-enter/);
+  assert.match(source, /@keyframes vx-sheet-enter/);
+  assert.match(source, /\.account-overlay\.open \.account-card/);
+  assert.match(source, /\.daily-look-style\.selected:after/);
+  assert.match(source, /prefers-reduced-motion:reduce/);
+  assert.match(source, /nextScreen\.classList\.add\('ui-entering'\)/);
+  assert.match(source, /panel\.classList\.add\('ui-category-enter'\)/);
+  assert.match(source, /button\.style\.setProperty\('--vx-delay'/);
+});
+
 test('private-group image presentation cache cannot block opening a group', () => {
   assert.doesNotMatch(source, /profileImage:typeof group\.profileImage/);
   assert.match(source, /A cache write must never prevent an encrypted group from opening/);
