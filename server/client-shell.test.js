@@ -72,9 +72,12 @@ test('the interface motion layer animates screens, sheets and portrait choices a
   assert.match(source, /'Professional':'<svg/);
   assert.match(source, /'Lifestyle':'<svg/);
   assert.match(source, /@keyframes vx-collection-enter/);
-  assert.match(source, /@keyframes daily-look-goo-a/);
-  assert.match(source, /@keyframes daily-look-orbit-spin/);
+  assert.match(source, /@keyframes daily-look-silk-flow/);
+  assert.match(source, /@keyframes daily-look-silk-progress/);
   assert.match(source, /function startDailyLookCreationAnimation\(\)/);
+  assert.match(source, /overlay\.append\(layer\)/);
+  assert.doesNotMatch(source, /daily-look-orbit-card/);
+  assert.doesNotMatch(source, /daily-look-creation-center/);
   assert.match(source, /preview\.classList\.add\('result-reveal'\)/);
 });
 
