@@ -17,8 +17,8 @@ test('Daily Look keeps provider credentials on the server and requires an authen
   assert.match(server, /https:\/\/api\.openai\.com\/v1\/moderations/);
 });
 
-test('Daily Look allows ten successful creations and resets at midnight IST across replicas', () => {
-  assert.match(server, /const DAILY_LOOK_DAILY_LIMIT = 10/);
+test('Daily Look allows fifteen successful creations and resets at midnight IST across replicas', () => {
+  assert.match(server, /const DAILY_LOOK_DAILY_LIMIT = 15/);
   assert.match(server, /DAILY_LOOK_RESET_OFFSET_MINUTES/);
   assert.match(server, /configured >= -720 && configured <= 840 \? configured : 330/);
   assert.match(server, /function dailyLookDayWindow\(now = Date\.now\(\)\)/);
@@ -35,7 +35,7 @@ test('Daily Look allows ten successful creations and resets at midnight IST acro
   assert.match(postgres, /UPDATE accounts SET daily_look_claimed_at=\$2[\s\S]*RETURNING account_id/);
   assert.match(postgres, /daily_look_window_started_at <> \$3/);
   assert.match(postgres, /completeDailyLook[\s\S]*daily_look_generation_count=CASE/);
-  assert.match(client, /Up to \$\{result\.limit \|\| 10\} portraits daily/);
+  assert.match(client, /Up to \$\{result\.limit \|\| 15\} portraits daily/);
 });
 
 test('Daily Look sends only an explicitly selected, reduced image, preserves its original dimensions, and never stores the source', () => {
