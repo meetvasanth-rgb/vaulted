@@ -1552,15 +1552,6 @@ async function createOpenAiDailyLook(image, style, apiKey, directedPrompt, canva
   return finishDailyLookImage(result.data?.[0]?.b64_json, canvas.sourceWidth, canvas.sourceHeight);
 }
 
-function geminiDailyLookAspectRatio(width, height) {
-  const target = width / height;
-  const supported = [
-    ['1:1', 1], ['2:3', 2 / 3], ['3:2', 3 / 2], ['3:4', 3 / 4], ['4:3', 4 / 3],
-    ['4:5', 4 / 5], ['5:4', 5 / 4], ['9:16', 9 / 16], ['16:9', 16 / 9], ['21:9', 21 / 9],
-  ];
-  return supported.reduce((best, item) => Math.abs(Math.log(item[1] / target)) < Math.abs(Math.log(best[1] / target)) ? item : best)[0];
-}
-
 async function createGeminiDailyLook(image, apiKey, directedPrompt, canvas) {
   const model = process.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image';
   const response = await openAiJson(`https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(model)}:generateContent`, {
@@ -1573,14 +1564,15 @@ async function createGeminiDailyLook(image, apiKey, directedPrompt, canvas) {
       ] }],
       generationConfig:{
         responseModalities:['IMAGE'],
-        responseFormat:{ image:{
-          aspectRatio:geminiDailyLookAspectRatio(canvas.sourceWidth, canvas.sourceHeight),
-          imageSize:process.env.GEMINI_IMAGE_SIZE || '1K',
-        } },
       },
     }),
   }, 120000);
-  if (!response.ok) throw new Error(`gemini-image-${response.status}`);
+  if (!response.ok) {
+    const failure = await response.json().catch(() => ({}));
+    const reason = String(failure?.error?.status || failure?.error?.code || 'unknown')
+      .toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40);
+    throw new Error(`gemini-image-${response.status}-${reason || 'unknown'}`);
+  }
   const result = await response.json();
   const parts = result.candidates?.flatMap(candidate => candidate?.content?.parts || []) || [];
   const imagePart = parts.find(part => part?.inlineData?.data || part?.inline_data?.data);

@@ -102,6 +102,8 @@ test('curated portrait presets route server-side between OpenAI and Gemini witho
   assert.match(server, /provider:'gemini'/);
   assert.match(server, /gemini-3\.1-flash-image/);
   assert.match(server, /generativelanguage\.googleapis\.com\/v1\/models/);
+  assert.match(server, /responseModalities:\['IMAGE'\]/);
+  assert.doesNotMatch(server, /geminiDailyLookAspectRatio/);
   assert.match(server, /style\.provider === 'gemini' \? GEMINI_API_KEY : OPENAI_API_KEY/);
   assert.match(server, /CURATED_PORTRAIT_IDENTITY_PROMPT/);
   assert.match(server, /collection:style\.collection \|\| 'Portraits'/);
