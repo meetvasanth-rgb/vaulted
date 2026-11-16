@@ -112,6 +112,9 @@ test('curated portrait presets route server-side between OpenAI and Gemini witho
   assert.match(server, /style\.collection === 'Professional' \? `\\n\\n\$\{PROFESSIONAL_PORTRAIT_FINISH_PROMPT\}` : ''/);
   assert.match(server, /Correct the person's facial white balance independently from ambient office or interior colour casts/);
   assert.match(server, /The face must be at least as clearly exposed as in the source/);
+  assert.match(server, /LIFESTYLE_PORTRAIT_FINISH_PROMPT/);
+  assert.match(server, /style\.collection === 'Lifestyle' \? `\\n\\n\$\{LIFESTYLE_PORTRAIT_FINISH_PROMPT\}` : ''/);
+  assert.match(server, /Correct facial skin independently from warm café lamps, green foliage, sunset warmth or mixed ambient light/);
   assert.match(server, /The edit is incomplete if it only replaces the background or leaves the face flat, grey, dull or underexposed/);
   assert.match(server, /id:'classic-white-studio'[\s\S]*soft frontal fill to lift eye sockets, cheeks and jaw shadows/);
   assert.match(server, /do not tan, darken, whiten, lighten, redden, orange-shift or desaturate the skin/);

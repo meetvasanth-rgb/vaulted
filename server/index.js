@@ -266,6 +266,8 @@ const GEMINI_PORTRAIT_FINISH_PROMPT = `Mandatory Gemini portrait finishing: the 
 
 const PROFESSIONAL_PORTRAIT_FINISH_PROMPT = `Mandatory Professional collection finishing: keep the requested professional environment, wardrobe, posture and composition, but make the face the visual exposure priority. Correct the person's facial white balance independently from ambient office or interior colour casts, removing unwanted yellow, orange, green, cyan or magenta contamination while preserving the exact source skin hue and depth. Use a broad neutral key and soft frontal fill to lift the eyes, eye sockets, cheeks and jaw; add restrained natural catchlights; and keep facial midtones clear and luminous with smooth highlight roll-off. The face must be at least as clearly exposed as in the source and must not remain dull, muddy, grey, dim or colour-cast. Do not brighten by whitening or recolouring the skin, and do not alter identity, expression, age, texture or facial geometry.`;
 
+const LIFESTYLE_PORTRAIT_FINISH_PROMPT = `Mandatory Lifestyle collection finishing: preserve the requested real-world atmosphere, location, wardrobe, pose and candid character, but expose and white-balance the face as carefully as a premium lifestyle photograph. Correct facial skin independently from warm café lamps, green foliage, sunset warmth or mixed ambient light so the person's exact source skin hue and depth remain natural. Use believable environmental key light plus soft local fill to keep both eyes readable, open dull eye-socket and cheek shadows, add restrained natural catchlights and retain dimensional facial texture. The setting may remain warm or dramatic, but the face must not become orange, red, green, grey, tanned, muddy, flat or underexposed. Improve facial brightness through physically coherent light and exposure only; never whiten, recolour, smooth or reconstruct the person.`;
+
 const DAILY_LOOK_STYLES = Object.freeze([
   {
     // A once-in-a-while profile picture, not a daily look: a friendly stylised head-and-shoulders
@@ -1522,7 +1524,7 @@ function dailyLookDirectedPrompt(style, variantIndex) {
   return enhancerLook
     ? `${style.prompt}\n\nSelected surprise transformation for this generation:\n${enhancerLookBrief(enhancerLook)}`
     : style.kind === 'curated'
-      ? `${CURATED_PORTRAIT_IDENTITY_PROMPT}${style.provider === 'gemini' ? `\n\n${GEMINI_PORTRAIT_FINISH_PROMPT}` : ''}\n\nCurated preset: ${style.name}\n${style.prompt}${style.collection === 'Professional' ? `\n\n${PROFESSIONAL_PORTRAIT_FINISH_PROMPT}` : ''}`
+      ? `${CURATED_PORTRAIT_IDENTITY_PROMPT}${style.provider === 'gemini' ? `\n\n${GEMINI_PORTRAIT_FINISH_PROMPT}` : ''}\n\nCurated preset: ${style.name}\n${style.prompt}${style.collection === 'Professional' ? `\n\n${PROFESSIONAL_PORTRAIT_FINISH_PROMPT}` : ''}${style.collection === 'Lifestyle' ? `\n\n${LIFESTYLE_PORTRAIT_FINISH_PROMPT}` : ''}`
       : style.prompt;
 }
 
