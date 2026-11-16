@@ -65,6 +65,8 @@ test('Daily Look sends only an explicitly selected, reduced image, preserves its
 
 test('Daily Look offers curated rotating styles, profile use, and download', () => {
   assert.match(server, /id:'surprise-enhancer', name:'Surprise Enhancer'/);
+  assert.match(server, /id:'selfie-polish', name:'Selfie Polish'[\s\S]*collection:'Face Booster', provider:'gemini'/);
+  assert.match(server, /The result must look like the same selfie captured in better natural light with a better phone camera/);
   assert.doesNotMatch(server, /navratri/i, 'the Navratri Special style has been retired');
   assert.match(server, /Math\.floor\(now \/ \(7 \* DAY_MS\)\)/);
   assert.match(client, /Create New Portrait/);

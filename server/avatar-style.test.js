@@ -57,8 +57,9 @@ test('the avatar style is listed first and is publicly selectable by id', () => 
   const ids = [...block.matchAll(/\n  \{\n(?:\s*\/\/[^\n]*\n)*\s*id:'([^']+)'/g)].map(match => match[1]);
   assert.equal(ids[0], 'vaultlix-avatar');
   assert.equal(ids[1], 'surprise-enhancer');
-  assert.equal(ids.length, 20);
+  assert.equal(ids.length, 21);
   assert.ok(ids.includes('natural-polish'));
+  assert.ok(ids.includes('selfie-polish'));
   assert.ok(ids.includes('classic-white-studio'));
   assert.ok(ids.includes('modern-professional'));
   assert.ok(ids.includes('high-end-cafe'));
