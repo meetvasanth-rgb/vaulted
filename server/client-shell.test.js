@@ -68,6 +68,14 @@ test('the interface motion layer animates screens, sheets and portrait choices a
   assert.match(source, /nextScreen\.classList\.add\('ui-entering'\)/);
   assert.match(source, /panel\.classList\.add\('ui-category-enter'\)/);
   assert.match(source, /button\.style\.setProperty\('--vx-delay'/);
+  assert.match(source, /\.daily-look-collections\{display:grid;grid-template-columns:repeat\(3/);
+  assert.match(source, /'Professional':'<svg/);
+  assert.match(source, /'Lifestyle':'<svg/);
+  assert.match(source, /@keyframes vx-collection-enter/);
+  assert.match(source, /@keyframes daily-look-goo-a/);
+  assert.match(source, /@keyframes daily-look-orbit-spin/);
+  assert.match(source, /function startDailyLookCreationAnimation\(\)/);
+  assert.match(source, /preview\.classList\.add\('result-reveal'\)/);
 });
 
 test('private-group image presentation cache cannot block opening a group', () => {
