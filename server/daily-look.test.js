@@ -80,6 +80,19 @@ test('Daily Look offers curated rotating styles, profile use, and download', () 
   assert.match(client, /downloadDataUri\(dailyLookGeneratedImage/);
 });
 
+test('Selfies and Face Booster offer bounded blemish control without changing permanent features', () => {
+  assert.match(client, /id="daily-look-blemish-control" hidden/);
+  assert.match(client, /<option value="keep">Keep natural<\/option>/);
+  assert.match(client, /<option value="soften" selected>Soften temporary blemishes<\/option>/);
+  assert.match(client, /<option value="reduce">Reduce visible blemishes<\/option>/);
+  assert.match(client, /\['Selfies', 'Face Booster'\]\.includes\(dailyLookCollectionId\)/);
+  assert.match(client, /blemishLevel:document\.getElementById\('daily-look-blemish'\)\?\.value \|\| 'soften'/);
+  assert.match(server, /const DAILY_LOOK_BLEMISH_PROMPTS = Object\.freeze/);
+  assert.match(server, /style\.collection !== 'Selfies' && style\.collection !== 'Face Booster'/);
+  assert.match(server, /Always preserve permanent identity features such as moles, freckles, birthmarks, scars and beauty marks/);
+  assert.match(server, /createDailyLook\(image, style, apiKey, variantIndex, dimensions, d\.blemishLevel\)/);
+});
+
 test('Diwali Glow is retired after the festival', () => {
   assert.doesNotMatch(server, /diwali/i);
   assert.doesNotMatch(client, /diwali/i);

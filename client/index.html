@@ -3059,6 +3059,7 @@ html.vaultlix-native-android .emergency-sheet{
 .daily-look-collections{display:flex;gap:7px;overflow-x:auto;margin:0 -2px 10px;padding:2px 2px 5px;scrollbar-width:none}.daily-look-collections::-webkit-scrollbar{display:none}.daily-look-collection{flex:0 0 auto;padding:9px 12px;border:1px solid #DDCFD5;border-radius:999px;background:#fff;color:#624554;font:700 10px/1 'Manrope',sans-serif;white-space:nowrap}.daily-look-collection.selected{border-color:#6B1F3A;background:#6B1F3A;color:#fff}.daily-look-styles{grid-template-columns:repeat(2,minmax(0,1fr))}.daily-look-style strong{padding-right:22px}.daily-look-style:disabled{opacity:.5;cursor:not-allowed}
 .daily-look-consent{padding:11px 12px;border-radius:12px;background:#F7F1F3}
 .daily-look-photo-actions{display:grid;grid-template-columns:1fr;gap:9px}.daily-look-camera-button{display:none}.vaultlix-native-android .daily-look-photo-actions{grid-template-columns:1fr 1fr}.vaultlix-native-android .daily-look-camera-button{display:block}.daily-look-another{grid-column:1/-1}
+.daily-look-adjustment{margin:0 0 14px;padding:12px;border:1px solid #E1D2D8;border-radius:14px;background:#FBF7F8}.daily-look-adjustment[hidden]{display:none}.daily-look-adjustment label{display:block;margin:0 0 7px;color:#4B303D;font:750 11px/1.2 'Manrope',sans-serif}.daily-look-adjustment select{width:100%;min-height:42px;padding:0 12px;border:1px solid #D7C5CC;border-radius:11px;background:#fff;color:#38262F;font:650 11px/1.2 'Manrope',sans-serif}.daily-look-adjustment small{display:block;margin-top:7px;color:#806E76;font:500 9px/1.4 'Manrope',sans-serif}
 .account-creation-transition{position:absolute;z-index:8;inset:0;min-height:100%;display:grid;place-items:center;overflow:hidden;padding:30px;background:radial-gradient(circle at 50% 38%,rgba(200,117,136,.21),transparent 34%),#271D25;color:#fff;text-align:center;border-radius:inherit}
 .account-creation-transition[hidden]{display:none}
 .account-creation-transition::before,.account-creation-transition::after{content:"";position:absolute;width:180px;height:180px;border:1px solid rgba(200,117,136,.18);border-radius:50%;animation:account-identity-pulse 2.4s ease-out infinite}
@@ -5151,6 +5152,15 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
     <div class="daily-look-preview" id="daily-look-preview"><div class="daily-look-preview-copy">Choose a clear photo of yourself to begin.</div></div>
     <div class="daily-look-collections" id="daily-look-collections" aria-label="Portrait collections"></div>
     <div class="daily-look-styles" id="daily-look-styles" aria-label="Choose a portrait style"></div>
+    <div class="daily-look-adjustment" id="daily-look-blemish-control" hidden>
+      <label for="daily-look-blemish">Blemish control</label>
+      <select id="daily-look-blemish">
+        <option value="keep">Keep natural</option>
+        <option value="soften" selected>Soften temporary blemishes</option>
+        <option value="reduce">Reduce visible blemishes</option>
+      </select>
+      <small>Permanent features, skin tone and natural texture stay unchanged.</small>
+    </div>
     <input id="daily-look-profile-input" type="file" accept="image/*,.heic,.heif" hidden onchange="handleDailyLookProfilePhoto(event)"/>
         <input id="daily-look-photo-input" type="file" accept="image/*,.heic,.heif" hidden onchange="handleDailyLookPhoto(event)"/>
     <input id="daily-look-camera-input" type="file" accept="image/*" capture="environment" hidden onchange="handleDailyLookPhoto(event)"/>
@@ -13968,6 +13978,7 @@ function closeDailyLook() {
 function renderDailyLookStyles(styles = []) {
   const holder = document.getElementById('daily-look-styles');
   const collectionHolder = document.getElementById('daily-look-collections');
+  const blemishControl = document.getElementById('daily-look-blemish-control');
   if (!holder) return;
   if (dailyLookAvatarMode) {
     // Avatar mode offers the avatar style alone: nothing to choose, no gallery shortcut.
@@ -13975,6 +13986,7 @@ function renderDailyLookStyles(styles = []) {
     dailyLookStyleId = AVATAR_STYLE_ID;
     holder.replaceChildren();
     holder.hidden = true;
+    if (blemishControl) blemishControl.hidden = true;
     if (collectionHolder) { collectionHolder.replaceChildren(); collectionHolder.hidden = true; }
     refreshDailyLookGenerateCopy();
     return;
@@ -13987,6 +13999,7 @@ function renderDailyLookStyles(styles = []) {
   const selectedStyle = styles.find(style => style.id === dailyLookStyleId) || featured;
   const collections = [...new Set(styles.map(style => style.collection || 'Portraits'))];
   if (!collections.includes(dailyLookCollectionId)) dailyLookCollectionId = selectedStyle?.collection || collections[0] || null;
+  if (blemishControl) blemishControl.hidden = !['Selfies', 'Face Booster'].includes(dailyLookCollectionId);
   refreshDailyLookGenerateCopy();
   if (collectionHolder) collectionHolder.replaceChildren(...collections.map(collection => {
     const chip = document.createElement('button');
@@ -14155,6 +14168,7 @@ async function generateDailyLook() {
     accountId:state.accountId, sessionToken:state.sessionToken,
     image:dailyLookSourceImage, styleId:dailyLookStyleId,
     sourceWidth:dailyLookSourceDimensions?.width, sourceHeight:dailyLookSourceDimensions?.height,
+    blemishLevel:document.getElementById('daily-look-blemish')?.value || 'soften',
     portraitConsentVersion:PORTRAIT_STUDIO_CONSENT_VERSION,
   });
   if (result.error) {

@@ -270,6 +270,18 @@ const LIFESTYLE_PORTRAIT_FINISH_PROMPT = `Mandatory Lifestyle collection finishi
 
 const SELFIE_PORTRAIT_FINISH_PROMPT = `Mandatory Selfies collection rules: treat the source as a real phone selfie and edit that same photograph rather than generating a new portrait. Preserve the original background, crop, camera angle, pose, gaze, expression, hairstyle, clothing, jewellery, facial geometry and every recognisable feature. Preserve the person's exact source skin hue and depth, pores, fine texture, natural asymmetry and apparent age. Do not replace or restage the environment; do not tan, whiten, lighten, reshape or slim the face; do not enlarge eyes, narrow the nose, sharpen the jaw, add makeup, remove permanent features, erase all skin texture or apply a beauty filter. Improve only the photographic capture qualities requested by the named preset. The result must look like the same selfie captured with better light and a better phone camera, never like an AI-generated studio portrait.`;
 
+const DAILY_LOOK_BLEMISH_PROMPTS = Object.freeze({
+  keep:`Blemish setting — Keep natural: preserve all visible skin detail exactly, including temporary blemishes. Do not remove, soften, heal or conceal spots.`,
+  soften:`Blemish setting — Soften temporary blemishes: gently reduce only minor temporary spots and redness while retaining pores, fine texture and realistic tonal variation. The change must be subtle and must not resemble makeup or a beauty filter.`,
+  reduce:`Blemish setting — Reduce visible blemishes: reduce clearly visible temporary spots and local redness more noticeably, while retaining pores, natural texture and realistic skin variation. Do not create plastic or airbrushed skin.`,
+});
+
+function dailyLookBlemishPrompt(style, level) {
+  if (style.collection !== 'Selfies' && style.collection !== 'Face Booster') return '';
+  const instruction = DAILY_LOOK_BLEMISH_PROMPTS[level] || DAILY_LOOK_BLEMISH_PROMPTS.soften;
+  return `${instruction} Always preserve permanent identity features such as moles, freckles, birthmarks, scars and beauty marks.`;
+}
+
 const DAILY_LOOK_STYLES = Object.freeze([
   {
     // A once-in-a-while profile picture, not a daily look: a friendly stylised head-and-shoulders
@@ -1539,14 +1551,14 @@ function enhancerLookBrief(look) {
   ].join('\n');
 }
 
-function dailyLookDirectedPrompt(style, variantIndex) {
+function dailyLookDirectedPrompt(style, variantIndex, blemishLevel = 'soften') {
   const enhancerLook = style.id === 'surprise-enhancer'
     ? dailyLookRotationItem(ENHANCER_LOOKS, variantIndex)
     : null;
   return enhancerLook
     ? `${style.prompt}\n\nSelected surprise transformation for this generation:\n${enhancerLookBrief(enhancerLook)}`
     : style.kind === 'curated'
-      ? `${CURATED_PORTRAIT_IDENTITY_PROMPT}${style.provider === 'gemini' ? `\n\n${GEMINI_PORTRAIT_FINISH_PROMPT}` : ''}\n\nCurated preset: ${style.name}\n${style.prompt}${style.collection === 'Professional' ? `\n\n${PROFESSIONAL_PORTRAIT_FINISH_PROMPT}` : ''}${style.collection === 'Lifestyle' ? `\n\n${LIFESTYLE_PORTRAIT_FINISH_PROMPT}` : ''}${style.collection === 'Selfies' ? `\n\n${SELFIE_PORTRAIT_FINISH_PROMPT}` : ''}`
+      ? `${CURATED_PORTRAIT_IDENTITY_PROMPT}${style.provider === 'gemini' ? `\n\n${GEMINI_PORTRAIT_FINISH_PROMPT}` : ''}\n\nCurated preset: ${style.name}\n${style.prompt}${style.collection === 'Professional' ? `\n\n${PROFESSIONAL_PORTRAIT_FINISH_PROMPT}` : ''}${style.collection === 'Lifestyle' ? `\n\n${LIFESTYLE_PORTRAIT_FINISH_PROMPT}` : ''}${style.collection === 'Selfies' ? `\n\n${SELFIE_PORTRAIT_FINISH_PROMPT}` : ''}${dailyLookBlemishPrompt(style, blemishLevel) ? `\n\n${dailyLookBlemishPrompt(style, blemishLevel)}` : ''}`
       : style.prompt;
 }
 
@@ -1621,8 +1633,8 @@ async function createGeminiDailyLook(image, style, apiKey, directedPrompt, canva
   return finishDailyLookImage(imagePart?.inlineData?.data || imagePart?.inline_data?.data, canvas.sourceWidth, canvas.sourceHeight);
 }
 
-async function createDailyLook(image, style, apiKey, variantIndex = 0, dimensions = null) {
-  const directedPrompt = dailyLookDirectedPrompt(style, variantIndex);
+async function createDailyLook(image, style, apiKey, variantIndex = 0, dimensions = null, blemishLevel = 'soften') {
+  const directedPrompt = dailyLookDirectedPrompt(style, variantIndex, blemishLevel);
   const canvas = dailyLookCanvas(style, dimensions);
   if (style.provider === 'gemini') return createGeminiDailyLook(image, style, apiKey, directedPrompt, canvas);
   return createOpenAiDailyLook(image, style, apiKey, directedPrompt, canvas);
@@ -4559,7 +4571,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       }
       const dimensions = await dailyLookSourceDimensions(image, Number(d.sourceWidth), Number(d.sourceHeight));
       const variantIndex = dailyLookVariantIndex(d.accountId, usage.count, now);
-      const generatedImage = await createDailyLook(image, style, apiKey, variantIndex, dimensions);
+      const generatedImage = await createDailyLook(image, style, apiKey, variantIndex, dimensions, d.blemishLevel);
       const enhancerLook = style.id === 'surprise-enhancer'
         ? dailyLookRotationItem(ENHANCER_LOOKS, variantIndex)
         : null;
