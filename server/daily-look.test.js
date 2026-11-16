@@ -206,6 +206,8 @@ test('Daily Look offers etched camera, gallery and file source icons inside the 
   assert.match(client, /id="daily-look-file-button"[^>]*onclick="chooseDailyLookFile\(\)"[^>]*aria-label="Choose from files"/);
   assert.match(client, /id="daily-look-file-input"[^>]*\.heic/);
   assert.match(client, /\.daily-look-photo-actions\{position:absolute/);
+  assert.match(client, /\.daily-look-photo-actions\{[^}]*top:50%[^}]*translate\(-50%,-50%\)/);
+  assert.match(client, /\.daily-look-preview-copy\{[^}]*bottom:28px/);
   assert.match(client, /\.daily-look-source-button svg \.sketch-light/);
   assert.match(client, /function chooseDailyLookCamera\(\)/);
   assert.match(client, /function chooseDailyLookFile\(\)/);
