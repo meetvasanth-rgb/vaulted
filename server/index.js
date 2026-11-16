@@ -191,7 +191,7 @@ const CONNECTION_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DELETION_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PRIVATE_NUMBER_RESERVATION_TTL_MS = 5 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const DAILY_LOOK_DAILY_LIMIT = 5;
+const DAILY_LOOK_DAILY_LIMIT = 10;
 const ATTACHMENT_UPLOAD_TTL_MS = 15 * 60 * 1000;
 const ATTACHMENT_GARBAGE_SWEEP_MS = 10 * 60 * 1000;
 const STATUS_MEDIA_UPLOAD_TTL_MS = 15 * 60 * 1000;
@@ -4502,10 +4502,10 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const usage = dailyLookUsage(account, now);
     if (usage.remaining <= 0) {
       res.setHeader('Cache-Control', 'no-store');
-      return resErr(res, 'You have created five portraits. Your next one will be available tomorrow.', 429);
+      return resErr(res, 'You have created ten portraits. Your next one will be available tomorrow.', 429);
     }
     if (!(await claimDailyLook(d.accountId, account, now))) {
-      return resErr(res, 'A portrait is already being created, or today’s five portraits are complete.', 429);
+      return resErr(res, 'A portrait is already being created, or today’s ten portraits are complete.', 429);
     }
     try {
       // OpenAI edits are pre-moderated with the same provider. Gemini image

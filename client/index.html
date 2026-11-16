@@ -5146,7 +5146,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 
 <div class="account-overlay" id="daily-look-overlay" onclick="if(event.target===this)closeDailyLook()">
   <div class="account-card daily-look-card" role="dialog" aria-modal="true" aria-labelledby="daily-look-title">
-    <div class="account-head"><div><div class="account-kicker" id="daily-look-kicker">Up to five portraits daily</div><div class="account-title" id="daily-look-title">Portrait Studio</div></div><button class="account-close" type="button" onclick="closeDailyLook()" aria-label="Close">×</button></div>
+    <div class="account-head"><div><div class="account-kicker" id="daily-look-kicker">Up to ten portraits daily</div><div class="account-title" id="daily-look-title">Portrait Studio</div></div><button class="account-close" type="button" onclick="closeDailyLook()" aria-label="Close">×</button></div>
     <div class="daily-look-hero"><strong id="daily-look-hero-title">A fresh portrait. Still unmistakably you.</strong><span id="daily-look-hero-copy">Choose a portrait style, then keep the result or make it your profile image.</span></div>
     <div class="daily-look-preview" id="daily-look-preview"><div class="daily-look-preview-copy">Choose a clear photo of yourself to begin.</div></div>
     <div class="daily-look-collections" id="daily-look-collections" aria-label="Portrait collections"></div>
@@ -13947,7 +13947,7 @@ function applyDailyLookMode(avatarMode) {
   dailyLookAvatarMode = !!avatarMode;
   const set = (id, text) => { const node = document.getElementById(id); if (node) node.textContent = text; };
   set('daily-look-title', avatarMode ? 'Your Vaultlix avatar' : 'Portrait Studio');
-  set('daily-look-kicker', avatarMode ? 'My Avatar' : 'Up to five portraits daily');
+  set('daily-look-kicker', avatarMode ? 'My Avatar' : 'Up to ten portraits daily');
   set('daily-look-hero-title', avatarMode ? 'A friendly cartoon of you.' : 'A fresh portrait. Still unmistakably you.');
   set('daily-look-hero-copy', avatarMode
     ? 'Pick a clear photo of your face. We turn it into an avatar you can use as your profile picture. The photo is not kept.'
@@ -14081,7 +14081,7 @@ async function openDailyLook(options = {}) {
     return;
   }
   const kicker = document.getElementById('daily-look-kicker');
-  if (kicker) kicker.textContent = dailyLookAvatarMode ? 'My Avatar' : `Up to ${result.limit || 5} portraits daily`;
+  if (kicker) kicker.textContent = dailyLookAvatarMode ? 'My Avatar' : `Up to ${result.limit || 10} portraits daily`;
   renderDailyLookStyles(result.styles || []);
   const generate = document.getElementById('daily-look-generate');
   if (!result.configured) {
@@ -14091,7 +14091,7 @@ async function openDailyLook(options = {}) {
     const next = new Date(result.nextAt);
     if (status) status.textContent = `Your next portrait is available ${next.toLocaleDateString([], { weekday:'short' })} at ${next.toLocaleTimeString([], { hour:'numeric', minute:'2-digit' })}.`;
     if (generate) generate.disabled = true;
-  } else if (status) status.textContent = `${result.remaining} of ${result.limit || 5} portraits remaining today.`;
+  } else if (status) status.textContent = `${result.remaining} of ${result.limit || 10} portraits remaining today.`;
 }
 
 function chooseDailyLookPhoto() {
