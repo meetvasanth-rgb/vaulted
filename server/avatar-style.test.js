@@ -39,7 +39,7 @@ test('the avatar style is square, medium quality, identity-preserving and brand-
 });
 
 test('a square style replaces the "never make it a square" instruction and always renders 1024x1024', () => {
-  const create = server.slice(server.indexOf('async function createDailyLook('), server.indexOf('async function claimDailyLook('));
+  const create = server.slice(server.indexOf('function dailyLookCanvas('), server.indexOf('async function claimDailyLook('));
   assert.match(create, /const squareOutput = style\.canvas === 'square'/);
   assert.match(create, /squareOutput \? 1024 : \(dimensions\?\.width \|\| 1024\)/);
   assert.match(create, /Create the avatar on a square 1:1 canvas/);
@@ -55,7 +55,13 @@ test('a square style replaces the "never make it a square" instruction and alway
 test('the avatar style is listed first and is publicly selectable by id', () => {
   const block = server.match(/const DAILY_LOOK_STYLES = Object\.freeze\(\[([\s\S]*?)\n\]\);/)[1];
   const ids = [...block.matchAll(/\n  \{\n(?:\s*\/\/[^\n]*\n)*\s*id:'([^']+)'/g)].map(match => match[1]);
-  assert.deepEqual(ids, ['vaultlix-avatar', 'surprise-enhancer']);
+  assert.equal(ids[0], 'vaultlix-avatar');
+  assert.equal(ids[1], 'surprise-enhancer');
+  assert.equal(ids.length, 20);
+  assert.ok(ids.includes('natural-polish'));
+  assert.ok(ids.includes('classic-white-studio'));
+  assert.ok(ids.includes('modern-professional'));
+  assert.ok(ids.includes('high-end-cafe'));
 });
 
 function offerHarness({ state, stored = {} }) {

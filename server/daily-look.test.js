@@ -47,10 +47,10 @@ test('Daily Look sends only an explicitly selected, reduced image, preserves its
   assert.match(client, /sourceWidth:dailyLookSourceDimensions\?\.width, sourceHeight:dailyLookSourceDimensions\?\.height/);
   assert.match(server, /bytes\.length > 900 \* 1024/);
   assert.match(server, /dailyLookSourceDimensions\(image, Number\(d\.sourceWidth\), Number\(d\.sourceHeight\)\)/);
-  assert.match(server, /dailyLookProviderSize\(sourceWidth, sourceHeight\)/);
+  assert.match(server, /dailyLookProviderSize\(canvas\.sourceWidth, canvas\.sourceHeight\)/);
   assert.match(server, /resize\(sourceWidth, sourceHeight, \{ fit:'cover', position:'centre' \}\)/);
   assert.match(client, /--daily-look-aspect/);
-  assert.match(client, /I agree to send this selected photo to OpenAI/);
+  assert.match(client, /OpenAI or Google Gemini/);
   assert.match(server, /parseDailyLookImage\(d\.image\)/);
   assert.doesNotMatch(postgres, /daily_look_(?:source|input|original|image)\b/);
   assert.match(client, /Vaultlix does not keep the selected source photo/);
@@ -85,9 +85,21 @@ test('status creation can return a generated Daily Look into preview before audi
 
 test('Daily Look uses the configured image model, provider size and per-style quality', () => {
   assert.match(server, /process\.env\.OPENAI_IMAGE_MODEL \|\| 'gpt-image-2\.5-sunburst'/);
-  assert.match(server, /dailyLookProviderSize\(sourceWidth, sourceHeight\)/);
+  assert.match(server, /dailyLookProviderSize\(canvas\.sourceWidth, canvas\.sourceHeight\)/);
   assert.match(server, /style\.quality \|\| process\.env\.OPENAI_IMAGE_QUALITY \|\| 'medium'/);
   assert.match(client, /\.daily-look-preview\{[^}]*aspect-ratio:var\(--daily-look-aspect,1\)/);
+});
+
+test('curated portrait presets route server-side between OpenAI and Gemini without exposing prompts or keys', () => {
+  assert.match(server, /const GEMINI_API_KEY = process\.env\.GEMINI_API_KEY/);
+  assert.match(server, /provider:'gemini'/);
+  assert.match(server, /gemini-3\.1-flash-image/);
+  assert.match(server, /generativelanguage\.googleapis\.com\/v1\/models/);
+  assert.match(server, /style\.provider === 'gemini' \? GEMINI_API_KEY : OPENAI_API_KEY/);
+  assert.match(server, /CURATED_PORTRAIT_IDENTITY_PROMPT/);
+  assert.match(server, /collection:style\.collection \|\| 'Portraits'/);
+  assert.doesNotMatch(client, /GEMINI_API_KEY|GOOGLE_AI_API_KEY|generativelanguage\.googleapis\.com/);
+  assert.doesNotMatch(client, /Curated preset:|source photograph is authoritative for identity/);
 });
 
 test('Surprise Enhancer rotates source-aware transformations without repeating today', () => {

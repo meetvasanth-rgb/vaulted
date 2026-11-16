@@ -49,6 +49,7 @@ const PORT = process.env.PORT || 3000;
 const PROCESS_STARTED_AT = Date.now();
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.OPENAI_API || '';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || '';
 if (ADMIN_KEY && ADMIN_KEY.length < 32) console.warn('ADMIN_KEY is shorter than 32 characters — replace it with a stronger key.');
 // Named rooms are meant to persist for 4 days of inactivity, one-time
 // (auto-generated code) rooms for 24 hours — per the product spec. This used
@@ -245,11 +246,20 @@ Choose finishing from the actual scenario. For a gym image, keep the gym recogni
     direction:`Create a premium hand-drawn cinematic anime interpretation with faithful facial proportions, recognisable identity, restrained cel shading, delicate linework and luminous natural colour. Preserve exact apparent age, skin tone, hairstyle, expression, clothing and cultural markers; do not enlarge the eyes excessively, sharpen the jaw, slim the face or substitute a generic anime character. A close portrait uses a refined shoulder-up composition, a wider image preserves the pose and meaningful setting, and a couple or group retains every person with distinct likenesses. Adapt the background from the source into a coherent illustrated environment with matching light and perspective rather than defaulting to cherry blossoms or a generic fantasy scene.`,
   },
 ]);
+
+// Named Portrait Studio presets are curated product recipes, never prompts
+// supplied by the user. This contract stays server-side and is prepended to
+// every photorealistic preset so a more dramatic style cannot trade likeness
+// for a generic face.
+const CURATED_PORTRAIT_IDENTITY_PROMPT = `Create a photorealistic portrait edit of the uploaded person. The source photograph is authoritative for identity. Preserve the exact face shape and proportions, forehead, hairline, eyebrows, eye shape and spacing, nose, cheeks, lips, teeth, jaw, ears, skin tone, apparent age, expression, hairstyle, facial hair, body proportions and cultural markers. Keep natural skin texture and recognisable asymmetry. Do not beautify, slim, age, de-age, lighten skin, enlarge eyes, narrow the nose, reshape the jaw, alter teeth or replace the person with a generic model.
+
+Preserve every visible person unless the named recipe explicitly asks for a single-person crop. Keep anatomy realistic, hands readable, lighting physically coherent and head-to-body proportions natural. The result must look like a premium real photograph, not synthetic art. Do not generate text, logos or watermarks.`;
+
 const DAILY_LOOK_STYLES = Object.freeze([
   {
     // A once-in-a-while profile picture, not a daily look: a friendly stylised head-and-shoulders
     // cartoon built from the person's own photo. Always a square, whatever the source photo's shape.
-    id:'vaultlix-avatar', name:'My Avatar', note:'A friendly cartoon portrait of you, made for your profile',
+    id:'vaultlix-avatar', name:'My Avatar', note:'A friendly cartoon portrait of you, made for your profile', collection:'Avatar',
     canvas:'square', size:'1024x1024', quality:'medium',
     prompt:`Turn the person in the uploaded photograph into a friendly, polished, stylised 3D-cartoon avatar for a messaging profile picture.
 
@@ -262,13 +272,85 @@ Background: one clean, flat, soft pastel colour that complements their skin and 
 If the photograph contains several people, make the avatar of the single most prominent or central person only. Do not depict a celebrity, a character or any real person other than the one photographed. Do not generate any text, logo or watermark.`,
   },
   {
-    id:'surprise-enhancer', name:'Surprise Enhancer', note:'Lighting, caricature, headshot, enhancement, Mini Me or anime — without repeats',
+    id:'surprise-enhancer', name:'Surprise Enhancer', note:'A different curated transformation each time', collection:'Surprise Me',
     size:'1024x1024', quality:'high',
     prompt:`Enhance the uploaded photograph into a polished, profile-ready image following the selected transformation family. First inspect the source and identify whether it is a close portrait, half-body or full-body photograph, couple or group; identify the real environment; and identify the direction, softness and colour of its physical light sources. Apply the source-type and environment instructions inside the selected transformation instead of forcing every image into the same portrait or lighting template.
 
 The input photograph is authoritative for identity. Preserve every visible person's exact face and unmistakable identity: face outline, forehead, hairline, eyebrow shape, eye shape and spacing, nose width and profile, cheeks, lips, teeth, smile, jaw, ears, skin tone, exact apparent age, expression, gaze, hairstyle, cultural markers and natural facial fullness. Do not reconstruct the face from a generic beauty ideal. Fresh lighting means flattering exposure and healthy natural skin texture, never making the person younger and never replacing or reshaping the face. Do not add wrinkles, eye bags, grey hair, plastic skin, new makeup, changed teeth, enlarged eyes, a narrowed nose, altered lips, a sharpened jaw or a slimmer face.
 
 For Fix Lighting and Enhance Photo, treat this as a restrained edit of the original pixels: preserve the exact pose, body proportions, hands, clothing, camera viewpoint, lens perspective, crop, scene layout and object placement. Only photographic light and finishing may change. For explicitly illustrative transformations such as Caricature, Mini Me and Cinematic Anime, preserve recognisable identity and source relationships while applying the named medium. Preserve all visible people without adding, merging or omitting anyone. Keep anatomy accurate and head/body proportions natural. Maintain consistent light direction, colour temperature, shadows, perspective and depth across the complete image. Apply exactly the selected transformation as one coherent visual direction, not a collage or a random background swap. No text, logos or watermarks.`,
+  },
+  {
+    id:'natural-polish', name:'Natural Polish', note:'Subtle cleanup without changing you', collection:'Face Booster', kind:'curated', quality:'high',
+    prompt:`Retain the original composition and environment. Apply restrained professional retouching only: correct exposure and white balance, recover highlights and shadows, reduce camera noise, soften temporary blemishes while retaining pores, and add delicate eye and hair detail. Keep makeup, clothing, background, pose and lighting direction unchanged. It must look like the same photograph captured and finished more carefully.`,
+  },
+  {
+    id:'soft-daylight', name:'Soft Daylight', note:'Clean window-light freshness', collection:'Face Booster', kind:'curated', quality:'high',
+    prompt:`Preserve the scene and pose while refining the photograph into soft natural daylight. Use a large window-like key that agrees with the existing light direction, gentle facial fill, neutral whites, accurate skin colour, open shadows and smooth highlight roll-off. Keep realistic skin texture and avoid artificial glow, background replacement or beauty-filter styling.`,
+  },
+  {
+    id:'studio-clarity', name:'Studio Clarity', note:'Crisp detail and balanced light', collection:'Face Booster', kind:'curated', quality:'high',
+    prompt:`Preserve the complete source composition. Give it the clarity of a professionally lit portrait: controlled contrast, clean neutral colour, recoverable sharpness, subtle facial light shaping and restrained subject separation. Do not replace the background, change clothing, alter the pose or create exaggerated HDR detail.`,
+  },
+  {
+    id:'low-light-rescue', name:'Low-Light Rescue', note:'Natural detail from dim photos', collection:'Face Booster', kind:'curated', quality:'high',
+    prompt:`Repair a dim or noisy portrait while retaining its real time of day and atmosphere. Correct colour casts, lift the face naturally, suppress chroma and luminance noise, recover usable detail and protect practical lights from clipping. Do not turn night into daytime, invent missing facial features or produce waxy skin.`,
+  },
+  {
+    id:'outdoor-balance', name:'Outdoor Balance', note:'Even skin and sky in daylight', collection:'Face Booster', kind:'curated', quality:'high',
+    prompt:`Finish the existing outdoor portrait with balanced natural daylight. Recover sky and bright background detail where available, lift facial shadows, neutralise unwanted colour casts and keep foliage, architecture and weather authentic. Preserve the precise location, crop, pose and wardrobe; avoid fake sunset light or excessive background blur.`,
+  },
+  {
+    id:'warm-glow', name:'Warm Glow', note:'Gentle warmth, never orange', collection:'Face Booster', kind:'curated', quality:'high',
+    prompt:`Give the existing photograph an elegant warm finish with softly luminous skin, controlled golden highlights and neutral shadow detail. Warmth must follow the real light sources and remain subtle; whites stay believable and skin must never become orange, over-smoothed or lightened. Preserve scene, pose, clothing and composition.`,
+  },
+  {
+    id:'classic-white-studio', name:'Classic White', note:'Timeless bright studio portrait', collection:'Signature Studio', provider:'gemini', kind:'curated', quality:'high',
+    prompt:`Create a premium contemporary studio portrait on a clean soft-white seamless background. Use an 85mm portrait perspective, flattering large soft key, gentle fill, subtle separation and an uncluttered head-and-shoulders or half-body composition appropriate to the source. Preserve the person's actual clothing identity and do not automatically add formal attire.`,
+  },
+  {
+    id:'warm-ivory-studio', name:'Warm Ivory', note:'Soft, refined and inviting', collection:'Signature Studio', provider:'gemini', kind:'curated', quality:'high',
+    prompt:`Create a refined editorial studio portrait against a warm ivory seamless background with soft directional light, restrained contrast and natural skin texture. Use balanced head-and-shoulders or half-body framing derived from the source. Preserve wardrobe identity, body shape and expression; keep the palette modern rather than vintage or sepia.`,
+  },
+  {
+    id:'charcoal-studio', name:'Charcoal', note:'Rich contrast, modern finish', collection:'Signature Studio', provider:'gemini', kind:'curated', quality:'high',
+    prompt:`Create a premium portrait on a deep charcoal studio background. Use a soft sculpting key, controlled fill and a subtle rim that separates hair and shoulders without theatrical colour. Retain natural skin tone, clothing details and authentic facial texture. The mood is confident and contemporary, not dark, harsh or cinematic fantasy.`,
+  },
+  {
+    id:'window-light-portrait', name:'Window Light', note:'Quiet natural editorial light', collection:'Signature Studio', provider:'gemini', kind:'curated', quality:'high',
+    prompt:`Create a calm editorial portrait beside a large unseen window, with soft directional daylight, gentle shadow falloff and an elegant neutral interior or simple backdrop. Preserve the person's clothing and expression and keep the result candid and believable. Avoid overexposure, dramatic sun rays, ornate decor or excessive blur.`,
+  },
+  {
+    id:'luxury-minimal', name:'Luxury Minimal', note:'High-end portrait, no clutter', collection:'Signature Studio', provider:'gemini', kind:'curated', quality:'high',
+    prompt:`Create a high-end minimalist portrait with refined neutral materials, precise soft lighting, restrained colour and generous negative space. Keep the person unmistakably themselves and preserve their wardrobe style. The setting should feel current and architecturally plausible, with no fake luxury logos, ornate props or dated decor.`,
+  },
+  {
+    id:'modern-professional', name:'Modern Professional', note:'Approachable profile portrait', collection:'Professional', kind:'curated', quality:'high',
+    prompt:`Create an approachable modern professional portrait suitable for a profile or company page. Use a clean contemporary office or softly neutral workspace, eye-level camera, natural posture and confident but friendly expression. Preserve the person's actual clothing unless a minor tidy-up is needed; do not force a suit, tie or corporate uniform.`,
+  },
+  {
+    id:'executive-portrait', name:'Executive', note:'Confident and understated', collection:'Professional', kind:'curated', quality:'high',
+    prompt:`Create an understated executive portrait in a premium modern office with restrained architecture and natural daylight. Use composed posture, sophisticated neutral grading and realistic depth. Preserve age, body shape and identity exactly. Clothing may be tidied into a polished version of the source style but must not become costume-like or overly formal.`,
+  },
+  {
+    id:'creative-professional', name:'Creative Professional', note:'Polished with more personality', collection:'Professional', provider:'gemini', kind:'curated', quality:'high',
+    prompt:`Create a polished portrait for a designer, founder, artist or creative professional. Use a tasteful contemporary studio or workspace with subtle colour, relaxed posture and directional soft light. Keep the environment believable and uncluttered, preserve wardrobe personality and avoid generic corporate stock-photo styling.`,
+  },
+  {
+    id:'healthcare-professional', name:'Healthcare', note:'Warm, credible and clear', collection:'Professional', kind:'curated', quality:'high',
+    prompt:`Create a warm credible healthcare professional portrait in a bright, clean, modern clinical environment. Preserve the person's real identity and expression. Only retain medical clothing or professional markers if they are supported by the source; never invent a stethoscope, title, badge, uniform or credential. Keep the setting subtle and non-branded.`,
+  },
+  {
+    id:'speaker-author', name:'Speaker / Author', note:'Editorial portrait with presence', collection:'Professional', provider:'gemini', kind:'curated', quality:'high',
+    prompt:`Create a confident editorial portrait for a speaker, author or expert. Use elegant directional light, composed posture and a refined contemporary venue, library or stage-adjacent setting chosen to suit the source. Keep props minimal, do not invent readable book titles or event branding, and preserve the person's natural character.`,
+  },
+  {
+    id:'high-end-cafe', name:'High-End Café', note:'Natural social portrait', collection:'Lifestyle', provider:'gemini', kind:'curated', quality:'high',
+    prompt:`Place the person naturally in a contemporary high-end café with refined materials, soft daylight and subtle background activity. Use realistic perspective, lighting and depth, as if photographed candidly by a friend. Preserve pose and wardrobe cues where possible. Avoid visible brands, artificial luxury, empty uncanny interiors or dated decor.`,
+  },
+  {
+    id:'golden-hour', name:'Golden Hour', note:'Modern outdoor warmth', collection:'Lifestyle', provider:'gemini', kind:'curated', quality:'high',
+    prompt:`Create a natural outdoor portrait during believable late-afternoon golden light. Use soft directional sun, gentle sky fill, realistic shadows and a modern uncluttered location appropriate to the source. Preserve skin tone, clothing and proportions; avoid orange grading, fantasy skies, excessive lens flare or changing the person.`,
   },
 ]);
 const FREE_NUMBER_INACTIVITY_MS = 730 * DAY_MS;
@@ -1312,10 +1394,13 @@ function peerActivity(room, ownToken, now = Date.now()) {
 
 function publicDailyLookStyles(now = Date.now()) {
   const styles = DAILY_LOOK_STYLES;
-  const featuredIndex = Math.floor(now / (7 * DAY_MS)) % styles.length;
-  const featuredId = styles[featuredIndex]?.id;
+  const featuredStyles = styles.filter(style => style.id !== 'vaultlix-avatar');
+  const featuredIndex = Math.floor(now / (7 * DAY_MS)) % featuredStyles.length;
+  const featuredId = featuredStyles[featuredIndex]?.id;
   return styles.map(style => ({
-    id:style.id, name:style.name, note:style.note, featured:style.id === featuredId,
+    id:style.id, name:style.name, note:style.note, collection:style.collection || 'Portraits',
+    featured:style.id === featuredId,
+    available:style.provider === 'gemini' ? !!GEMINI_API_KEY : !!OPENAI_API_KEY,
   }));
 }
 
@@ -1419,15 +1504,18 @@ function enhancerLookBrief(look) {
   ].join('\n');
 }
 
-async function createDailyLook(image, style, apiKey, variantIndex = 0, dimensions = null) {
-  const form = new FormData();
-  form.append('model', process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst');
+function dailyLookDirectedPrompt(style, variantIndex) {
   const enhancerLook = style.id === 'surprise-enhancer'
     ? dailyLookRotationItem(ENHANCER_LOOKS, variantIndex)
     : null;
-  const directedPrompt = enhancerLook
+  return enhancerLook
     ? `${style.prompt}\n\nSelected surprise transformation for this generation:\n${enhancerLookBrief(enhancerLook)}`
-    : style.prompt;
+    : style.kind === 'curated'
+      ? `${CURATED_PORTRAIT_IDENTITY_PROMPT}\n\nCurated preset: ${style.name}\n${style.prompt}`
+      : style.prompt;
+}
+
+function dailyLookCanvas(style, dimensions) {
   // An avatar is always a 1024px square; every other style keeps the source photo's own shape.
   const squareOutput = style.canvas === 'square';
   const sourceWidth = squareOutput ? 1024 : (dimensions?.width || 1024);
@@ -1436,9 +1524,24 @@ async function createDailyLook(image, style, apiKey, variantIndex = 0, dimension
   const canvasInstruction = squareOutput
     ? 'Create the avatar on a square 1:1 canvas. Do not generate any text, logo or watermark.'
     : `Preserve the source image's ${orientation} canvas, full composition and ${sourceWidth}:${sourceHeight} aspect ratio. Keep all important people, hands, feet and scene details safely inside that frame. Do not convert the composition into a square or crop it to a profile portrait. Do not generate any text, logo or watermark.`;
-  form.append('prompt', `${directedPrompt}\n\n${canvasInstruction}`);
+  return { sourceWidth, sourceHeight, canvasInstruction };
+}
+
+async function finishDailyLookImage(base64, sourceWidth, sourceHeight) {
+  if (typeof base64 !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) throw new Error('image-empty');
+  const output = await sharp(Buffer.from(base64, 'base64'), { limitInputPixels:60 * 1000 * 1000 })
+    .resize(sourceWidth, sourceHeight, { fit:'cover', position:'centre' })
+    .jpeg({ quality:90, chromaSubsampling:'4:4:4' })
+    .toBuffer();
+  return `data:image/jpeg;base64,${output.toString('base64')}`;
+}
+
+async function createOpenAiDailyLook(image, style, apiKey, directedPrompt, canvas) {
+  const form = new FormData();
+  form.append('model', process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst');
+  form.append('prompt', `${directedPrompt}\n\n${canvas.canvasInstruction}`);
   form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
-  form.append('size', dailyLookProviderSize(sourceWidth, sourceHeight));
+  form.append('size', dailyLookProviderSize(canvas.sourceWidth, canvas.sourceHeight));
   form.append('quality', style.quality || process.env.OPENAI_IMAGE_QUALITY || 'medium');
   form.append('output_format', 'jpeg');
   const response = await openAiJson('https://api.openai.com/v1/images/edits', {
@@ -1446,13 +1549,49 @@ async function createDailyLook(image, style, apiKey, variantIndex = 0, dimension
   });
   if (!response.ok) throw new Error(`image-${response.status}`);
   const result = await response.json();
-  const base64 = result.data?.[0]?.b64_json;
-  if (typeof base64 !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) throw new Error('image-empty');
-  const output = await sharp(Buffer.from(base64, 'base64'), { limitInputPixels:60 * 1000 * 1000 })
-    .resize(sourceWidth, sourceHeight, { fit:'cover', position:'centre' })
-    .jpeg({ quality:90, chromaSubsampling:'4:4:4' })
-    .toBuffer();
-  return `data:image/jpeg;base64,${output.toString('base64')}`;
+  return finishDailyLookImage(result.data?.[0]?.b64_json, canvas.sourceWidth, canvas.sourceHeight);
+}
+
+function geminiDailyLookAspectRatio(width, height) {
+  const target = width / height;
+  const supported = [
+    ['1:1', 1], ['2:3', 2 / 3], ['3:2', 3 / 2], ['3:4', 3 / 4], ['4:3', 4 / 3],
+    ['4:5', 4 / 5], ['5:4', 5 / 4], ['9:16', 9 / 16], ['16:9', 16 / 9], ['21:9', 21 / 9],
+  ];
+  return supported.reduce((best, item) => Math.abs(Math.log(item[1] / target)) < Math.abs(Math.log(best[1] / target)) ? item : best)[0];
+}
+
+async function createGeminiDailyLook(image, apiKey, directedPrompt, canvas) {
+  const model = process.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image';
+  const response = await openAiJson(`https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(model)}:generateContent`, {
+    method:'POST',
+    headers:{ 'x-goog-api-key':apiKey, 'Content-Type':'application/json' },
+    body:JSON.stringify({
+      contents:[{ role:'user', parts:[
+        { text:`${directedPrompt}\n\n${canvas.canvasInstruction}` },
+        { inline_data:{ mime_type:image.mime, data:image.bytes.toString('base64') } },
+      ] }],
+      generationConfig:{
+        responseModalities:['IMAGE'],
+        responseFormat:{ image:{
+          aspectRatio:geminiDailyLookAspectRatio(canvas.sourceWidth, canvas.sourceHeight),
+          imageSize:process.env.GEMINI_IMAGE_SIZE || '1K',
+        } },
+      },
+    }),
+  }, 120000);
+  if (!response.ok) throw new Error(`gemini-image-${response.status}`);
+  const result = await response.json();
+  const parts = result.candidates?.flatMap(candidate => candidate?.content?.parts || []) || [];
+  const imagePart = parts.find(part => part?.inlineData?.data || part?.inline_data?.data);
+  return finishDailyLookImage(imagePart?.inlineData?.data || imagePart?.inline_data?.data, canvas.sourceWidth, canvas.sourceHeight);
+}
+
+async function createDailyLook(image, style, apiKey, variantIndex = 0, dimensions = null) {
+  const directedPrompt = dailyLookDirectedPrompt(style, variantIndex);
+  const canvas = dailyLookCanvas(style, dimensions);
+  if (style.provider === 'gemini') return createGeminiDailyLook(image, apiKey, directedPrompt, canvas);
+  return createOpenAiDailyLook(image, style, apiKey, directedPrompt, canvas);
 }
 
 async function claimDailyLook(accountId, account, now) {
@@ -4311,7 +4450,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       testing:true,
       limit:DAILY_LOOK_DAILY_LIMIT,
       remaining:usage.remaining,
-      configured:!!OPENAI_API_KEY,
+      configured:!!(OPENAI_API_KEY || GEMINI_API_KEY),
       styles:publicDailyLookStyles(),
       // For the account's own app only: whether it is old enough, and has never made one, for the nudge.
       createdAt:Number(account.createdAt) || 0,
@@ -4361,12 +4500,12 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         await rateLimited(`daily-look-ip:${ip}`, 20, 60 * 60 * 1000)) {
       return resErr(res, 'Too many image attempts — try again later.', 429);
     }
-    const apiKey = OPENAI_API_KEY;
-    if (!apiKey) return resErr(res, 'Portrait Studio is temporarily unavailable.', 503);
     const now = Date.now();
     const style = DAILY_LOOK_STYLES.find(item => item.id === d.styleId);
     const image = parseDailyLookImage(d.image);
     if (!style || !image) return resErr(res, 'Choose a valid photo and style.', 400);
+    const apiKey = style.provider === 'gemini' ? GEMINI_API_KEY : OPENAI_API_KEY;
+    if (!apiKey) return resErr(res, 'This portrait style is temporarily unavailable.', 503);
     const usage = dailyLookUsage(account, now);
     if (usage.remaining <= 0) {
       res.setHeader('Cache-Control', 'no-store');
@@ -4376,7 +4515,10 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       return resErr(res, 'A portrait is already being created, or today’s five portraits are complete.', 429);
     }
     try {
-      if (await moderateDailyLookImage(d.image, apiKey)) {
+      // OpenAI edits are pre-moderated with the same provider. Gemini image
+      // edits use Gemini's built-in image safety filters instead of sending
+      // the source portrait to a second provider.
+      if (style.provider !== 'gemini' && await moderateDailyLookImage(d.image, apiKey)) {
         await releaseDailyLookClaim(d.accountId);
         return resErr(res, 'This photo cannot be used in Portrait Studio. Choose another.', 400);
       }

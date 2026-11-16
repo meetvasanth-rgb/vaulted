@@ -57,7 +57,12 @@ Daily Look uses an authenticated server endpoint; the provider key must never be
 - `OPENAI_API` — accepted as a backwards-compatible Railway alias
 - `OPENAI_IMAGE_MODEL` — optional model override (defaults to `gpt-image-2.5-sunburst` for precise portrait editing)
 - `OPENAI_IMAGE_QUALITY` — optional quality override (defaults to `medium`)
-Daily Look currently permits five successful creations per account per calendar day, resetting at 12:00 AM India Standard Time, and allows only one generation to run at a time per account. Failed or refused requests do not consume an attempt.
+- `GEMINI_API_KEY` — Google AI Studio/Gemini API key used by the curated studio and lifestyle presets
+- `GOOGLE_AI_API_KEY` — accepted as an alias for `GEMINI_API_KEY`
+- `GEMINI_IMAGE_MODEL` — optional model override (defaults to `gemini-3.1-flash-image`)
+- `GEMINI_IMAGE_SIZE` — optional Gemini output size (defaults to `1K`)
+
+Each preset declares its provider on the server; this routing information and every curated prompt stay out of the client. Portrait Studio currently permits five successful creations per account per calendar day, resetting at 12:00 AM India Standard Time, and allows only one generation to run at a time per account. Failed or refused requests do not consume an attempt.
 
 ---
 
