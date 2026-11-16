@@ -99,7 +99,7 @@ test('no offer once there is a profile picture, when signed out, or after it was
   assert.match(offerHarness({ state:{ accountId:'acc2' }, stored:{ 'vaultlix_avatar_offer:acc1':'dismissed' } }).context.avatarOfferHtml(), /Make your avatar/);
 });
 
-test('The photo route opens the Daily Look sheet on the avatar style and the sheet is reworded', () => {
+test('The photo route opens the Daily Look sheet on the avatar style without the retired hero badge', () => {
   const h = offerHarness({ state:{ accountId:'acc1' } });
   h.context.openAvatarFromPhoto();
   assert.deepEqual(JSON.parse(JSON.stringify(h.context.opened)), { styleId:'vaultlix-avatar' });
@@ -109,7 +109,7 @@ test('The photo route opens the Daily Look sheet on the avatar style and the she
   assert.doesNotMatch(open, /loadDailyLookResult\(/);
   const apply = extractFunction('applyDailyLookMode');
   assert.match(apply, /Your Vaultlix avatar/);
-  assert.match(apply, /The photo is not kept/);
+  assert.doesNotMatch(client, /daily-look-hero-title|daily-look-hero-copy/);
   // Only the avatar style is shown in avatar mode, and the profile button keeps its meaning.
   assert.match(extractFunction('renderDailyLookStyles'), /style\.id === AVATAR_STYLE_ID/);
   assert.match(client, /onclick="closeProfilePhotoMenu\(\);openAvatarBuilder\(\)">Create my avatar<\/button>/);

@@ -74,8 +74,14 @@ test('the interface motion layer animates screens, sheets and portrait choices a
   assert.match(source, /@keyframes vx-collection-enter/);
   assert.match(source, /@keyframes daily-look-silk-flow/);
   assert.match(source, /@keyframes daily-look-silk-progress/);
-  assert.match(source, /class="daily-look-dancer"/);
-  assert.match(source, /@keyframes daily-look-dancer-bob/);
+  assert.match(source, /class="daily-look-bold-count"/);
+  assert.match(source, /class="daily-look-count-step"/);
+  assert.match(source, /@keyframes daily-look-bold-step/);
+  assert.match(source, />01<\/b><em>LIGHT</);
+  assert.match(source, />02<\/b><em>STYLE</);
+  assert.match(source, />03<\/b><em>DETAILS</);
+  assert.doesNotMatch(source, /daily-look-dancer/);
+  assert.doesNotMatch(source, /A fresh portrait\. Still unmistakably you\./);
   assert.match(source, /Hold that pose\. The pixels are getting dressed\./);
   assert.match(source, /Convincing the shadows to behave themselves\./);
   assert.match(source, /Don’t close this screen/);
