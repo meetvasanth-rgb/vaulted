@@ -74,6 +74,11 @@ test('the interface motion layer animates screens, sheets and portrait choices a
   assert.match(source, /@keyframes vx-collection-enter/);
   assert.match(source, /@keyframes daily-look-silk-flow/);
   assert.match(source, /@keyframes daily-look-silk-progress/);
+  assert.match(source, /class="daily-look-dancer"/);
+  assert.match(source, /@keyframes daily-look-dancer-bob/);
+  assert.match(source, /Hold that pose\. The pixels are getting dressed\./);
+  assert.match(source, /Convincing the shadows to behave themselves\./);
+  assert.match(source, /Don’t close this screen/);
   assert.match(source, /function startDailyLookCreationAnimation\(\)/);
   assert.match(source, /overlay\.append\(layer\)/);
   assert.doesNotMatch(source, /daily-look-orbit-card/);
