@@ -70,6 +70,8 @@ test('Daily Look offers curated rotating styles, profile use, and download', () 
   assert.match(server, /id:'selfie-indoor-balance', name:'Indoor Balance'[\s\S]*collection:'Selfies', provider:'openai'/);
   assert.match(server, /id:'selfie-low-light', name:'Low-Light Selfie'[\s\S]*collection:'Selfies', provider:'openai'/);
   assert.match(server, /id:'selfie-outdoor', name:'Outdoor Selfie'[\s\S]*collection:'Selfies', provider:'openai'/);
+  assert.match(server, /id:'golden-hour', name:'Golden Hour'[\s\S]*collection:'Lifestyle', provider:'openai'/);
+  assert.match(server, /The result must look like the identical camera frame professionally relit and graded/);
   assert.match(server, /The result must look like the same selfie captured in better natural light with a better phone camera/);
   assert.doesNotMatch(server, /navratri/i, 'the Navratri Special style has been retired');
   assert.match(server, /Math\.floor\(now \/ \(7 \* DAY_MS\)\)/);
