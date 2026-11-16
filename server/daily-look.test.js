@@ -65,11 +65,11 @@ test('Daily Look sends only an explicitly selected, reduced image, preserves its
 
 test('Daily Look offers curated rotating styles, profile use, and download', () => {
   assert.match(server, /id:'surprise-enhancer', name:'Surprise Enhancer'/);
-  assert.match(server, /id:'selfie-polish', name:'Selfie Polish'[\s\S]*collection:'Selfies', provider:'gemini'/);
-  assert.match(server, /id:'selfie-soft-daylight', name:'Soft Daylight'[\s\S]*collection:'Selfies', provider:'gemini'/);
-  assert.match(server, /id:'selfie-indoor-balance', name:'Indoor Balance'[\s\S]*collection:'Selfies', provider:'gemini'/);
-  assert.match(server, /id:'selfie-low-light', name:'Low-Light Selfie'[\s\S]*collection:'Selfies', provider:'gemini'/);
-  assert.match(server, /id:'selfie-outdoor', name:'Outdoor Selfie'[\s\S]*collection:'Selfies', provider:'gemini'/);
+  assert.match(server, /id:'selfie-polish', name:'Selfie Polish'[\s\S]*collection:'Selfies', provider:'openai'/);
+  assert.match(server, /id:'selfie-soft-daylight', name:'Soft Daylight'[\s\S]*collection:'Selfies', provider:'openai'/);
+  assert.match(server, /id:'selfie-indoor-balance', name:'Indoor Balance'[\s\S]*collection:'Selfies', provider:'openai'/);
+  assert.match(server, /id:'selfie-low-light', name:'Low-Light Selfie'[\s\S]*collection:'Selfies', provider:'openai'/);
+  assert.match(server, /id:'selfie-outdoor', name:'Outdoor Selfie'[\s\S]*collection:'Selfies', provider:'openai'/);
   assert.match(server, /The result must look like the same selfie captured in better natural light with a better phone camera/);
   assert.doesNotMatch(server, /navratri/i, 'the Navratri Special style has been retired');
   assert.match(server, /Math\.floor\(now \/ \(7 \* DAY_MS\)\)/);

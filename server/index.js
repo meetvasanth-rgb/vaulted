@@ -300,23 +300,23 @@ For Fix Lighting and Enhance Photo, treat this as a restrained edit of the origi
     prompt:`Retain the original composition and environment. Apply restrained professional retouching only: correct exposure and white balance, recover highlights and shadows, reduce camera noise, soften temporary blemishes while retaining pores, and add delicate eye and hair detail. Keep makeup, clothing, background, pose and lighting direction unchanged. It must look like the same photograph captured and finished more carefully.`,
   },
   {
-    id:'selfie-polish', name:'Selfie Polish', note:'Balanced natural selfie enhancement', collection:'Selfies', provider:'gemini', kind:'curated', quality:'high',
+    id:'selfie-polish', name:'Selfie Polish', note:'Balanced natural selfie enhancement', collection:'Selfies', provider:'openai', kind:'curated', quality:'high',
     prompt:`Enhance the uploaded selfie as a restrained edit of the same photograph. Preserve the original background, crop, camera angle, pose, gaze, expression, hairstyle, clothing, jewellery and every recognisable facial feature. Do not replace the setting or turn the image into a studio portrait. Correct front-camera exposure and mixed white balance; lift dull facial and under-eye shadows with believable soft fill; recover highlights; reduce phone-camera luminance and colour noise; restore gentle eye, eyebrow and hair detail; and improve mild softness without creating brittle sharpening. Preserve the person's exact source skin hue and depth, pores, fine texture, natural asymmetry and real apparent age. Do not tan, whiten, lighten, reshape or slim the face; do not enlarge eyes, narrow the nose, sharpen the jaw, add makeup, remove permanent features, erase all skin texture or apply a beauty filter. The result must look like the same selfie captured in better natural light with a better phone camera, not an AI-generated portrait.`,
   },
   {
-    id:'selfie-soft-daylight', name:'Soft Daylight', note:'Fresh, natural window light', collection:'Selfies', provider:'gemini', kind:'curated', quality:'high',
+    id:'selfie-soft-daylight', name:'Soft Daylight', note:'Fresh, natural window light', collection:'Selfies', provider:'openai', kind:'curated', quality:'high',
     prompt:`Refine the same selfie with believable soft daylight while retaining its original setting and composition. Correct white balance to clean neutral daylight, use a broad window-like key that agrees with the existing light direction, add gentle facial fill, open eye and cheek shadows, protect bright areas and retain smooth natural highlight roll-off. Keep the background recognisable and naturally illuminated; do not replace it, blur it excessively or create visible sun rays or artificial glow.`,
   },
   {
-    id:'selfie-indoor-balance', name:'Indoor Balance', note:'Fix mixed room lighting', collection:'Selfies', provider:'gemini', kind:'curated', quality:'high',
+    id:'selfie-indoor-balance', name:'Indoor Balance', note:'Fix mixed room lighting', collection:'Selfies', provider:'openai', kind:'curated', quality:'high',
     prompt:`Correct the same indoor selfie without changing the room or the person. Remove unwanted yellow, orange, green or magenta colour casts from the face while allowing practical room lights to remain believable. Balance facial exposure with soft local fill, preserve ambient atmosphere, recover shadow and highlight detail, reduce phone noise and keep skin colour neutral and faithful to the source. Do not make the room look like daylight or replace its lighting design.`,
   },
   {
-    id:'selfie-low-light', name:'Low-Light Selfie', note:'Clearer selfies in dim light', collection:'Selfies', provider:'gemini', kind:'curated', quality:'high',
+    id:'selfie-low-light', name:'Low-Light Selfie', note:'Clearer selfies in dim light', collection:'Selfies', provider:'openai', kind:'curated', quality:'high',
     prompt:`Rescue the same dim selfie while preserving its real night-time or low-light atmosphere. Lift the face naturally, correct mixed-light colour casts, reduce luminance and chroma noise, recover realistic eye and hair detail, protect lamps and bright screens from clipping and retain believable shadows. Do not turn night into daytime, invent facial detail, create waxy skin or replace the background.`,
   },
   {
-    id:'selfie-outdoor', name:'Outdoor Selfie', note:'Balanced face and bright background', collection:'Selfies', provider:'gemini', kind:'curated', quality:'high',
+    id:'selfie-outdoor', name:'Outdoor Selfie', note:'Balanced face and bright background', collection:'Selfies', provider:'openai', kind:'curated', quality:'high',
     prompt:`Finish the same outdoor selfie with balanced natural daylight. Recover bright sky or background detail where available, lift facial shadows with believable sky fill, neutralise reflected green or blue colour casts, control highlights and keep the actual weather and location authentic. Preserve the original background, crop and pose; do not add sunset light, fantasy skies, artificial lens flare or excessive background blur.`,
   },
   {
