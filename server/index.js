@@ -253,7 +253,16 @@ Choose finishing from the actual scenario. For a gym image, keep the gym recogni
 // for a generic face.
 const CURATED_PORTRAIT_IDENTITY_PROMPT = `Create a photorealistic portrait edit of the uploaded person. The source photograph is authoritative for identity. Preserve the exact face shape and proportions, forehead, hairline, eyebrows, eye shape and spacing, nose, cheeks, lips, teeth, jaw, ears, skin tone, apparent age, expression, hairstyle, facial hair, body proportions and cultural markers. Keep natural skin texture and recognisable asymmetry. Do not beautify, slim, age, de-age, lighten skin, enlarge eyes, narrow the nose, reshape the jaw, alter teeth or replace the person with a generic model.
 
-Preserve every visible person unless the named recipe explicitly asks for a single-person crop. Keep anatomy realistic, hands readable, lighting physically coherent and head-to-body proportions natural. The result must look like a premium real photograph, not synthetic art. Do not generate text, logos or watermarks.`;
+Preserve every visible person unless the named recipe explicitly asks for a single-person crop. Keep anatomy realistic, hands readable, lighting physically coherent and head-to-body proportions natural.
+
+Perform a complete professional portrait-lighting pass on the person as well as the setting. First analyse the source face exposure, white balance, light direction and the person's actual skin hue and depth. Then relight the face, neck, ears, hair, clothing and body coherently for the named recipe: use a broad soft key, gentle fill that opens dull eye sockets and heavy facial shadows, natural catchlights, controlled highlights and subtle hair-and-shoulder separation. Correct underexposure and unwanted colour casts, recover natural shadow detail, and give the face clear, healthy luminosity without bleaching or changing the person's real skin tone. Match the source skin hue and depth exactly after correcting only the source illumination: do not tan, darken, whiten, lighten, redden, orange-shift or desaturate the skin. Retain pores, fine facial texture and natural contrast; do not add makeup, artificial glow, plastic smoothing or beauty-filter effects. The lighting must belong to the new background and must remain consistent across the complete person. The edit is incomplete if it only replaces the background or leaves the face flat, grey, dull or underexposed.
+
+The result must look like a premium real photograph, not synthetic art. Do not generate text, logos or watermarks.`;
+
+// Gemini image edits can otherwise treat a new background as the whole task
+// and inherit its colour cast into the subject. This finishing contract is
+// appended to every Gemini-backed recipe, regardless of collection.
+const GEMINI_PORTRAIT_FINISH_PROMPT = `Mandatory Gemini portrait finishing: the background change and the subject relighting are one coherent edit. Re-evaluate the person's face after creating the requested setting and give the face, neck, ears, hair, clothing and body professional light that matches that setting. Keep both eyes readable, add only physically plausible catchlights, lift muddy shadows, control highlights and retain natural depth and texture. Match the person's source skin hue and depth exactly after neutralising only the original lighting cast. Never tan, darken, whiten, lighten, redden, orange-shift, grey or desaturate the skin. Improve a dull face through neutral exposure, key light and fill light only, not by recolouring, smoothing or reconstructing it. Before returning the image, verify that identity, expression, skin tone and facial proportions still match the source and that the face is not flat, dull, underexposed or disconnected from the new environment.`;
 
 const DAILY_LOOK_STYLES = Object.freeze([
   {
@@ -306,23 +315,23 @@ For Fix Lighting and Enhance Photo, treat this as a restrained edit of the origi
   },
   {
     id:'classic-white-studio', name:'Classic White', note:'Timeless bright studio portrait', collection:'Signature Studio', provider:'gemini', kind:'curated', quality:'high',
-    prompt:`Create a premium contemporary studio portrait on a clean soft-white seamless background. Use an 85mm portrait perspective, flattering large soft key, gentle fill, subtle separation and an uncluttered head-and-shoulders or half-body composition appropriate to the source. Preserve the person's actual clothing identity and do not automatically add formal attire.`,
+    prompt:`Create a premium contemporary studio portrait on a clean soft-white seamless background. Relight the person for this bright studio: use a large soft key about 30 to 45 degrees from camera, soft frontal fill to lift eye sockets, cheeks and jaw shadows, clean natural catchlights, neutral daylight white balance and subtle hair-and-shoulder separation. Bring a dull or underexposed face to a clear flattering exposure with dimensional modelling and smooth highlight roll-off. Compare the finished face to the source and preserve the exact original skin hue and depth: the white background must not make the skin tanned, darker, warmer, redder, orange, grey, pale or washed out. Improve brightness only through neutral light and exposure, never by recolouring skin or changing facial features. Keep the face at least as clearly exposed as in the source while preserving natural shadow shape and texture. Use an 85mm portrait perspective and an uncluttered head-and-shoulders or half-body composition appropriate to the source. Preserve the person's actual clothing identity and do not automatically add formal attire.`,
   },
   {
     id:'warm-ivory-studio', name:'Warm Ivory', note:'Soft, refined and inviting', collection:'Signature Studio', provider:'gemini', kind:'curated', quality:'high',
-    prompt:`Create a refined editorial studio portrait against a warm ivory seamless background with soft directional light, restrained contrast and natural skin texture. Use balanced head-and-shoulders or half-body framing derived from the source. Preserve wardrobe identity, body shape and expression; keep the palette modern rather than vintage or sepia.`,
+    prompt:`Create a refined editorial studio portrait against a warm ivory seamless background. Relight the face and body with a broad directional soft key, gentle bounce fill on the shadow side, clear natural catchlights and subtle separation from the ivory background. Lift dull facial shadows and correct mixed-light colour casts while keeping the person's real skin tone, natural texture and dimensional facial structure. Use restrained contrast and balanced head-and-shoulders or half-body framing derived from the source. Preserve wardrobe identity, body shape and expression; keep the palette warm-neutral and modern rather than vintage, yellow or sepia.`,
   },
   {
     id:'charcoal-studio', name:'Charcoal', note:'Rich contrast, modern finish', collection:'Signature Studio', provider:'gemini', kind:'curated', quality:'high',
-    prompt:`Create a premium portrait on a deep charcoal studio background. Use a soft sculpting key, controlled fill and a subtle rim that separates hair and shoulders without theatrical colour. Retain natural skin tone, clothing details and authentic facial texture. The mood is confident and contemporary, not dark, harsh or cinematic fantasy.`,
+    prompt:`Create a premium portrait on a deep charcoal studio background. Keep the face clearly and naturally exposed against the dark setting: use a broad soft sculpting key, enough controlled fill to preserve both eyes and shadow-side facial detail, natural catchlights and a subtle rim that separates hair and shoulders without theatrical colour. Do not crush facial shadows or make the complexion grey. Retain real skin tone, clothing details and authentic facial texture. The mood is confident and contemporary, not dark, harsh or cinematic fantasy.`,
   },
   {
     id:'window-light-portrait', name:'Window Light', note:'Quiet natural editorial light', collection:'Signature Studio', provider:'gemini', kind:'curated', quality:'high',
-    prompt:`Create a calm editorial portrait beside a large unseen window, with soft directional daylight, gentle shadow falloff and an elegant neutral interior or simple backdrop. Preserve the person's clothing and expression and keep the result candid and believable. Avoid overexposure, dramatic sun rays, ornate decor or excessive blur.`,
+    prompt:`Create a calm editorial portrait beside a large unseen window. Relight the person with broad soft directional daylight and a natural bounce fill so both eyes remain readable, the face has clean catchlights and dull shadows are gently opened while retaining believable depth. Use neutral skin colour, smooth highlight roll-off, gentle shadow falloff and an elegant neutral interior or simple backdrop. Preserve the person's clothing and expression and keep the result candid and believable. Avoid overexposure, dramatic sun rays, ornate decor or excessive blur.`,
   },
   {
     id:'luxury-minimal', name:'Luxury Minimal', note:'High-end portrait, no clutter', collection:'Signature Studio', provider:'gemini', kind:'curated', quality:'high',
-    prompt:`Create a high-end minimalist portrait with refined neutral materials, precise soft lighting, restrained colour and generous negative space. Keep the person unmistakably themselves and preserve their wardrobe style. The setting should feel current and architecturally plausible, with no fake luxury logos, ornate props or dated decor.`,
+    prompt:`Create a high-end minimalist portrait with refined neutral materials, restrained colour and generous negative space. Give the person precise editorial lighting: a broad flattering key, gentle facial fill, natural catchlights, controlled skin highlights and subtle separation, correcting dull exposure without changing skin tone or facial structure. Keep the person unmistakably themselves and preserve their wardrobe style. The setting should feel current and architecturally plausible, with no fake luxury logos, ornate props or dated decor.`,
   },
   {
     id:'modern-professional', name:'Modern Professional', note:'Approachable profile portrait', collection:'Professional', kind:'curated', quality:'high',
@@ -334,7 +343,7 @@ For Fix Lighting and Enhance Photo, treat this as a restrained edit of the origi
   },
   {
     id:'creative-professional', name:'Creative Professional', note:'Polished with more personality', collection:'Professional', provider:'gemini', kind:'curated', quality:'high',
-    prompt:`Create a polished portrait for a designer, founder, artist or creative professional. Use a tasteful contemporary studio or workspace with subtle colour, relaxed posture and directional soft light. Keep the environment believable and uncluttered, preserve wardrobe personality and avoid generic corporate stock-photo styling.`,
+    prompt:`Create a polished portrait for a designer, founder, artist or creative professional. Relight the face and body with a directional broad soft key, gentle fill, natural catchlights and subtle subject separation so the complexion is clear, dimensional and naturally exposed. Use a tasteful contemporary studio or workspace with subtle colour and relaxed posture. Keep the environment believable and uncluttered, preserve wardrobe personality and avoid generic corporate stock-photo styling.`,
   },
   {
     id:'healthcare-professional', name:'Healthcare', note:'Warm, credible and clear', collection:'Professional', kind:'curated', quality:'high',
@@ -342,15 +351,15 @@ For Fix Lighting and Enhance Photo, treat this as a restrained edit of the origi
   },
   {
     id:'speaker-author', name:'Speaker / Author', note:'Editorial portrait with presence', collection:'Professional', provider:'gemini', kind:'curated', quality:'high',
-    prompt:`Create a confident editorial portrait for a speaker, author or expert. Use elegant directional light, composed posture and a refined contemporary venue, library or stage-adjacent setting chosen to suit the source. Keep props minimal, do not invent readable book titles or event branding, and preserve the person's natural character.`,
+    prompt:`Create a confident editorial portrait for a speaker, author or expert. Use elegant directional key light with controlled fill, readable eyes, natural catchlights and clean facial exposure that gives presence without beautifying or reshaping the person. Use composed posture and a refined contemporary venue, library or stage-adjacent setting chosen to suit the source. Keep props minimal, do not invent readable book titles or event branding, and preserve the person's natural character.`,
   },
   {
     id:'high-end-cafe', name:'High-End Café', note:'Natural social portrait', collection:'Lifestyle', provider:'gemini', kind:'curated', quality:'high',
-    prompt:`Place the person naturally in a contemporary high-end café with refined materials, soft daylight and subtle background activity. Use realistic perspective, lighting and depth, as if photographed candidly by a friend. Preserve pose and wardrobe cues where possible. Avoid visible brands, artificial luxury, empty uncanny interiors or dated decor.`,
+    prompt:`Place the person naturally in a contemporary high-end café with refined materials, soft daylight and subtle background activity. Relight the face with believable window light plus gentle ambient fill so the eyes, complexion and facial detail remain clear despite the interior, with natural catchlights and no muddy shadows or orange cast. Use realistic perspective, lighting and depth, as if photographed candidly by a friend. Preserve pose and wardrobe cues where possible. Avoid visible brands, artificial luxury, empty uncanny interiors or dated decor.`,
   },
   {
     id:'golden-hour', name:'Golden Hour', note:'Modern outdoor warmth', collection:'Lifestyle', provider:'gemini', kind:'curated', quality:'high',
-    prompt:`Create a natural outdoor portrait during believable late-afternoon golden light. Use soft directional sun, gentle sky fill, realistic shadows and a modern uncluttered location appropriate to the source. Preserve skin tone, clothing and proportions; avoid orange grading, fantasy skies, excessive lens flare or changing the person.`,
+    prompt:`Create a natural outdoor portrait during believable late-afternoon golden light. Relight the face with soft directional sun and sufficient cool sky fill to keep both eyes, skin texture and shadow-side detail clear, with controlled highlights and natural catchlights. The face must remain naturally luminous and accurately coloured rather than dark, orange or flat. Use realistic shadows and a modern uncluttered location appropriate to the source. Preserve skin tone, clothing and proportions; avoid orange grading, fantasy skies, excessive lens flare or changing the person.`,
   },
 ]);
 const FREE_NUMBER_INACTIVITY_MS = 730 * DAY_MS;
@@ -1511,7 +1520,7 @@ function dailyLookDirectedPrompt(style, variantIndex) {
   return enhancerLook
     ? `${style.prompt}\n\nSelected surprise transformation for this generation:\n${enhancerLookBrief(enhancerLook)}`
     : style.kind === 'curated'
-      ? `${CURATED_PORTRAIT_IDENTITY_PROMPT}\n\nCurated preset: ${style.name}\n${style.prompt}`
+      ? `${CURATED_PORTRAIT_IDENTITY_PROMPT}${style.provider === 'gemini' ? `\n\n${GEMINI_PORTRAIT_FINISH_PROMPT}` : ''}\n\nCurated preset: ${style.name}\n${style.prompt}`
       : style.prompt;
 }
 

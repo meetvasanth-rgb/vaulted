@@ -106,6 +106,12 @@ test('curated portrait presets route server-side between OpenAI and Gemini witho
   assert.doesNotMatch(server, /geminiDailyLookAspectRatio/);
   assert.match(server, /style\.provider === 'gemini' \? GEMINI_API_KEY : OPENAI_API_KEY/);
   assert.match(server, /CURATED_PORTRAIT_IDENTITY_PROMPT/);
+  assert.match(server, /GEMINI_PORTRAIT_FINISH_PROMPT/);
+  assert.match(server, /style\.provider === 'gemini' \? `\\n\\n\$\{GEMINI_PORTRAIT_FINISH_PROMPT\}` : ''/);
+  assert.match(server, /The edit is incomplete if it only replaces the background or leaves the face flat, grey, dull or underexposed/);
+  assert.match(server, /id:'classic-white-studio'[\s\S]*soft frontal fill to lift eye sockets, cheeks and jaw shadows/);
+  assert.match(server, /do not tan, darken, whiten, lighten, redden, orange-shift or desaturate the skin/);
+  assert.match(server, /the white background must not make the skin tanned, darker, warmer, redder, orange, grey, pale or washed out/);
   assert.match(server, /collection:style\.collection \|\| 'Portraits'/);
   assert.doesNotMatch(client, /GEMINI_API_KEY|GOOGLE_AI_API_KEY|generativelanguage\.googleapis\.com/);
   assert.doesNotMatch(client, /Curated preset:|source photograph is authoritative for identity/);
