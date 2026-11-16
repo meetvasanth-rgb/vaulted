@@ -396,7 +396,7 @@ For Fix Lighting and Enhance Photo, treat this as a restrained edit of the origi
     prompt:`Place the person naturally in a contemporary high-end café with refined materials, soft daylight and subtle background activity. Relight the face with believable window light plus gentle ambient fill so the eyes, complexion and facial detail remain clear despite the interior, with natural catchlights and no muddy shadows or orange cast. Use realistic perspective, lighting and depth, as if photographed candidly by a friend. Preserve pose and wardrobe cues where possible. Avoid visible brands, artificial luxury, empty uncanny interiors or dated decor.`,
   },
   {
-    id:'golden-hour', name:'Golden Hour', note:'Modern outdoor warmth', collection:'Lifestyle', provider:'openai', kind:'curated', quality:'high',
+    id:'golden-hour', name:'Golden Hour', note:'Modern outdoor warmth', collection:'Lifestyle', processor:'local', kind:'curated', quality:'high',
     prompt:`Edit the uploaded photograph conservatively as the same real photograph captured in flattering late-afternoon golden light. The source pixels are authoritative for the person and scene. Preserve the exact face geometry, expression, gaze, eyes, eyebrows, nose, lips, jaw, hairline, hairstyle, apparent age, skin tone and texture; preserve the exact body proportions, pose, hand placement, clothing, accessories, camera position, lens perspective, crop, background architecture, objects and text. Do not regenerate, beautify, restage, reframe, move, slim or replace the person or location.
 
 Change only the photographic light and colour: add subtle warm directional sunlight that follows the source's real light direction, sufficient neutral-to-cool sky fill to keep both eyes and shadow-side facial detail clear, restrained natural catchlights, controlled highlights and believable soft shadows. Keep the person's source skin hue and depth neutral and accurate; golden warmth may touch illuminated surfaces but must not tan, orange-shift, darken or recolour the face. The result must look like the identical camera frame professionally relit and graded, not a newly generated portrait. Avoid fantasy skies, artificial sun flares, background replacement, dramatic sunset effects and excessive orange grading.`,
@@ -1449,7 +1449,7 @@ function publicDailyLookStyles(now = Date.now()) {
   return styles.map(style => ({
     id:style.id, name:style.name, note:style.note, collection:style.collection || 'Portraits',
     featured:style.id === featuredId,
-    available:style.provider === 'gemini' ? !!GEMINI_API_KEY : !!OPENAI_API_KEY,
+    available:style.processor === 'local' || (style.provider === 'gemini' ? !!GEMINI_API_KEY : !!OPENAI_API_KEY),
   }));
 }
 
@@ -1585,6 +1585,23 @@ async function finishDailyLookImage(base64, sourceWidth, sourceHeight) {
   return `data:image/jpeg;base64,${output.toString('base64')}`;
 }
 
+async function createLocalGoldenHour(image, canvas) {
+  // This preset deliberately avoids a generative model. A restrained colour
+  // transform can warm the photograph without reconstructing a face, altering
+  // text or moving any scene detail. Sharp also strips source metadata here.
+  const output = await sharp(image.bytes, { limitInputPixels:60 * 1000 * 1000 })
+    .resize(canvas.sourceWidth, canvas.sourceHeight, { fit:'cover', position:'centre' })
+    .modulate({ brightness:1.025, saturation:1.055 })
+    .recomb([
+      [1.035, 0.012, 0.000],
+      [0.004, 1.008, 0.000],
+      [0.000, 0.004, 0.955],
+    ])
+    .jpeg({ quality:92, chromaSubsampling:'4:4:4' })
+    .toBuffer();
+  return `data:image/jpeg;base64,${output.toString('base64')}`;
+}
+
 async function createOpenAiDailyLook(image, style, apiKey, directedPrompt, canvas) {
   const form = new FormData();
   form.append('model', process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst');
@@ -1638,6 +1655,7 @@ async function createGeminiDailyLook(image, style, apiKey, directedPrompt, canva
 async function createDailyLook(image, style, apiKey, variantIndex = 0, dimensions = null, blemishLevel = 'soften') {
   const directedPrompt = dailyLookDirectedPrompt(style, variantIndex, blemishLevel);
   const canvas = dailyLookCanvas(style, dimensions);
+  if (style.processor === 'local') return createLocalGoldenHour(image, canvas);
   if (style.provider === 'gemini') return createGeminiDailyLook(image, style, apiKey, directedPrompt, canvas);
   return createOpenAiDailyLook(image, style, apiKey, directedPrompt, canvas);
 }
@@ -4553,8 +4571,8 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const image = parseDailyLookImage(d.image);
     if (!style || !image) return resErr(res, 'Choose a valid photo and style.', 400);
     if (d.portraitConsentVersion !== 1) return resErr(res, 'Allow Portrait Studio photo processing before creating a portrait.', 403);
-    const apiKey = style.provider === 'gemini' ? GEMINI_API_KEY : OPENAI_API_KEY;
-    if (!apiKey) return resErr(res, 'This portrait style is temporarily unavailable.', 503);
+    const apiKey = style.processor === 'local' ? '' : (style.provider === 'gemini' ? GEMINI_API_KEY : OPENAI_API_KEY);
+    if (style.processor !== 'local' && !apiKey) return resErr(res, 'This portrait style is temporarily unavailable.', 503);
     const usage = dailyLookUsage(account, now);
     if (usage.remaining <= 0) {
       res.setHeader('Cache-Control', 'no-store');
@@ -4567,7 +4585,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       // OpenAI edits are pre-moderated with the same provider. Gemini image
       // edits use Gemini's built-in image safety filters instead of sending
       // the source portrait to a second provider.
-      if (style.provider !== 'gemini' && await moderateDailyLookImage(d.image, apiKey)) {
+      if (style.processor !== 'local' && style.provider !== 'gemini' && await moderateDailyLookImage(d.image, apiKey)) {
         await releaseDailyLookClaim(d.accountId);
         return resErr(res, 'This photo cannot be used in Portrait Studio. Choose another.', 400);
       }

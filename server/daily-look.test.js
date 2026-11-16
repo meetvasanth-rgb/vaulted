@@ -70,7 +70,7 @@ test('Daily Look offers curated rotating styles, profile use, and download', () 
   assert.match(server, /id:'selfie-indoor-balance', name:'Indoor Balance'[\s\S]*collection:'Selfies', provider:'openai'/);
   assert.match(server, /id:'selfie-low-light', name:'Low-Light Selfie'[\s\S]*collection:'Selfies', provider:'openai'/);
   assert.match(server, /id:'selfie-outdoor', name:'Outdoor Selfie'[\s\S]*collection:'Selfies', provider:'openai'/);
-  assert.match(server, /id:'golden-hour', name:'Golden Hour'[\s\S]*collection:'Lifestyle', provider:'openai'/);
+  assert.match(server, /id:'golden-hour', name:'Golden Hour'[\s\S]*collection:'Lifestyle', processor:'local'/);
   assert.match(server, /The result must look like the identical camera frame professionally relit and graded/);
   assert.match(server, /The result must look like the same selfie captured in better natural light with a better phone camera/);
   assert.doesNotMatch(server, /navratri/i, 'the Navratri Special style has been retired');
@@ -116,6 +116,15 @@ test('Daily Look uses the configured image model, provider size and per-style qu
   assert.match(server, /dailyLookProviderSize\(canvas\.sourceWidth, canvas\.sourceHeight\)/);
   assert.match(server, /style\.quality \|\| process\.env\.OPENAI_IMAGE_QUALITY \|\| 'medium'/);
   assert.match(client, /\.daily-look-preview\{[^}]*aspect-ratio:var\(--daily-look-aspect,1\)/);
+});
+
+test('Golden Hour uses a non-generative grade so face pixels are never reconstructed', () => {
+  assert.match(server, /async function createLocalGoldenHour\(image, canvas\)/);
+  assert.match(server, /style\.processor === 'local'\) return createLocalGoldenHour\(image, canvas\)/);
+  assert.match(server, /style\.processor === 'local' \|\| \(style\.provider === 'gemini'/);
+  assert.match(server, /style\.processor !== 'local' && style\.provider !== 'gemini'/);
+  assert.match(server, /\.modulate\(\{ brightness:1\.025, saturation:1\.055 \}\)/);
+  assert.match(server, /\.jpeg\(\{ quality:92, chromaSubsampling:'4:4:4' \}\)/);
 });
 
 test('curated portrait presets route server-side between OpenAI and Gemini without exposing prompts or keys', () => {
