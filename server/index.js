@@ -395,7 +395,9 @@ Correct mixed-light yellow, green, orange or grey casts on each face independent
   },
   {
     id:'high-end-cafe', name:'High-End Café', note:'Natural social portrait', collection:'Lifestyle', provider:'gemini', kind:'curated', quality:'high',
-    prompt:`Place the person naturally in a contemporary high-end café with refined materials, soft daylight and subtle background activity. Relight the face with believable window light plus gentle ambient fill so the eyes, complexion and facial detail remain clear despite the interior, with natural catchlights and no muddy shadows or orange cast. Use realistic perspective, lighting and depth, as if photographed candidly by a friend. Preserve pose and wardrobe cues where possible. Avoid visible brands, artificial luxury, empty uncanny interiors or dated decor.`,
+    prompt:`Place the person naturally in a contemporary high-end café during the elegant 5–6 PM transition from late daylight to early evening. Show a believable mix of soft blue-gold window light outside and restrained warm practical lighting inside, with gentle reflections, dimensional shadows and subtle background activity. The café should feel atmospheric, modern and occupied rather than brightly floodlit or staged.
+
+Use a warm-neutral photographic white balance that preserves the early-evening ambience; do not render the scene with flat cool-white ceiling light, sterile pure-white illumination or an overall orange cast. Relight the face with broad directional window light plus soft local fill so both eyes, the exact complexion and natural facial texture stay clear and dimensional. Add restrained natural catchlights and soft hair-and-shoulder separation while preserving the person's exact source skin hue and depth. Use realistic perspective and depth, as if photographed candidly by a friend. Preserve pose and wardrobe cues where possible. Avoid visible brands, artificial luxury, empty uncanny interiors, dated décor, blown highlights and muddy facial shadows.`,
   },
   {
     id:'golden-hour', name:'Golden Hour', note:'Modern outdoor warmth', collection:'Lifestyle', processor:'local', kind:'curated', quality:'high',

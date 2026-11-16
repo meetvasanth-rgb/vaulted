@@ -151,6 +151,8 @@ test('curated portrait presets route server-side between OpenAI and Gemini witho
   assert.match(server, /LIFESTYLE_PORTRAIT_FINISH_PROMPT/);
   assert.match(server, /style\.collection === 'Lifestyle' \? `\\n\\n\$\{LIFESTYLE_PORTRAIT_FINISH_PROMPT\}` : ''/);
   assert.match(server, /Correct facial skin independently from warm café lamps, green foliage, sunset warmth or mixed ambient light/);
+  assert.match(server, /id:'high-end-cafe'[\s\S]*5–6 PM transition from late daylight to early evening/);
+  assert.match(server, /do not render the scene with flat cool-white ceiling light/);
   assert.match(server, /SELFIE_PORTRAIT_FINISH_PROMPT/);
   assert.match(server, /style\.collection === 'Selfies' \? `\\n\\n\$\{SELFIE_PORTRAIT_FINISH_PROMPT\}` : ''/);
   assert.match(server, /The edit is incomplete if it only replaces the background or leaves the face flat, grey, dull or underexposed/);
