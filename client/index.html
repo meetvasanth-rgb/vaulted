@@ -5172,7 +5172,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 
 <div class="account-overlay" id="daily-look-overlay" onclick="if(event.target===this)closeDailyLook()">
   <div class="account-card daily-look-card" role="dialog" aria-modal="true" aria-labelledby="daily-look-title">
-    <div class="account-head"><div><div class="account-kicker" id="daily-look-kicker">Up to ten portraits daily</div><div class="account-title" id="daily-look-title">Portrait Studio</div></div><button class="account-close" type="button" onclick="closeDailyLook()" aria-label="Close">×</button></div>
+    <div class="account-head"><div><div class="account-kicker" id="daily-look-kicker">Up to 15 portraits daily</div><div class="account-title" id="daily-look-title">Portrait Studio</div></div><button class="account-close" type="button" onclick="closeDailyLook()" aria-label="Close">×</button></div>
     <div class="daily-look-hero"><strong id="daily-look-hero-title">A fresh portrait. Still unmistakably you.</strong><span id="daily-look-hero-copy">Choose a portrait style, then keep the result or make it your profile image.</span></div>
     <div class="daily-look-preview" id="daily-look-preview"><div class="daily-look-preview-copy">Choose a clear photo of yourself to begin.</div></div>
     <div class="daily-look-collections" id="daily-look-collections" aria-label="Portrait collections"></div>
@@ -5193,7 +5193,6 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
       <button class="account-secondary" id="daily-look-photo-button" type="button" onclick="chooseDailyLookPhoto()">Choose gallery</button>
       <button class="account-secondary daily-look-camera-button" id="daily-look-camera-button" type="button" onclick="chooseDailyLookCamera()">Take photo</button>
     </div>
-    <div class="daily-look-consent" id="daily-look-consent-row">Your selected photo is processed by OpenAI or Google Gemini only to create this portrait. Vaultlix does not keep the original. Manage this permission in Privacy &amp; Security.</div>
     <div class="daily-look-status" id="daily-look-status" role="status" aria-live="polite"></div>
     <button class="account-primary" id="daily-look-generate" type="button" onclick="generateDailyLook()">Create My Portrait</button>
     <div class="daily-look-result-actions" id="daily-look-result-actions" hidden>
@@ -13996,7 +13995,7 @@ function applyDailyLookMode(avatarMode) {
   dailyLookAvatarMode = !!avatarMode;
   const set = (id, text) => { const node = document.getElementById(id); if (node) node.textContent = text; };
   set('daily-look-title', avatarMode ? 'Your Vaultlix avatar' : 'Portrait Studio');
-  set('daily-look-kicker', avatarMode ? 'My Avatar' : 'Up to ten portraits daily');
+  set('daily-look-kicker', avatarMode ? 'My Avatar' : 'Up to 15 portraits daily');
   set('daily-look-hero-title', avatarMode ? 'A friendly cartoon of you.' : 'A fresh portrait. Still unmistakably you.');
   set('daily-look-hero-copy', avatarMode
     ? 'Pick a clear photo of your face. We turn it into an avatar you can use as your profile picture. The photo is not kept.'
@@ -14106,7 +14105,9 @@ function resetDailyLookView() {
   dailyLookSourceDimensions = null;
   dailyLookGeneratedImage = null;
   const preview = document.getElementById('daily-look-preview');
-  if (preview) { preview.style.removeProperty('--daily-look-aspect'); preview.innerHTML = '<div class="daily-look-preview-copy">Choose a clear photo of yourself to begin.</div>'; }
+  if (preview) { preview.style.removeProperty('--daily-look-aspect'); preview.removeAttribute('tabindex'); preview.innerHTML = '<div class="daily-look-preview-copy">Choose a clear photo of yourself to begin.</div>'; }
+  const card = document.querySelector('#daily-look-overlay .daily-look-card');
+  if (card) card.scrollTop = 0;
   document.getElementById('daily-look-result-actions')?.setAttribute('hidden', '');
   const generate = document.getElementById('daily-look-generate');
   if (generate) { generate.hidden = false; generate.disabled = false; generate.textContent = dailyLookGenerateCopy(); }
@@ -14116,8 +14117,6 @@ function resetDailyLookView() {
   if (photoButton) { photoButton.disabled = false; photoButton.textContent = 'Choose gallery'; }
   const cameraButton = document.getElementById('daily-look-camera-button');
   if (cameraButton) { cameraButton.disabled = false; cameraButton.textContent = 'Take photo'; }
-  const consentRow = document.getElementById('daily-look-consent-row');
-  if (consentRow) consentRow.hidden = false;
   const statusUse = document.getElementById('daily-look-use-status');
   if (statusUse) statusUse.hidden = true;
 }
@@ -14398,6 +14397,17 @@ function enableDailyLookPreviewZoom(preview, image) {
   };
 }
 
+function navigateToDailyLookPreview(preview) {
+  const card = document.querySelector('#daily-look-overlay .daily-look-card');
+  if (!card || !preview) return;
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+  window.requestAnimationFrame(() => {
+    const top = Math.max(0, card.scrollTop + preview.getBoundingClientRect().top - card.getBoundingClientRect().top - 12);
+    card.scrollTo({ top, behavior: reducedMotion ? 'auto' : 'smooth' });
+    preview.focus({ preventScroll:true });
+  });
+}
+
 function showDailyLookResult(savedLook, message) {
   stopDailyLookCreationAnimation();
   dailyLookGeneratedImage = savedLook.image;
@@ -14416,17 +14426,18 @@ function showDailyLookResult(savedLook, message) {
     preview.classList.add('result-reveal');
     window.setTimeout(() => preview.classList.remove('result-reveal'), 900);
     enableDailyLookPreviewZoom(preview, image);
+    preview.tabIndex = -1;
   }
   const generate = document.getElementById('daily-look-generate');
   if (generate) generate.hidden = true;
   const photoActions = document.getElementById('daily-look-photo-actions');
   if (photoActions) photoActions.hidden = true;
-  document.getElementById('daily-look-consent-row').hidden = true;
   document.getElementById('daily-look-result-actions')?.removeAttribute('hidden');
   const statusUse = document.getElementById('daily-look-use-status');
   if (statusUse) statusUse.hidden = dailyLookDestination !== 'status';
   const status = document.getElementById('daily-look-status');
   if (status) status.textContent = message;
+  navigateToDailyLookPreview(preview);
 }
 
 function beginAnotherDailyLook() {

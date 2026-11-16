@@ -229,6 +229,14 @@ test('finished Daily Look previews support bounded pinch zoom, drag and double-t
   assert.match(client, /\.daily-look-preview\.zoomable\{touch-action:none/);
 });
 
+test('finished portraits navigate directly to preview without repeating processing consent', () => {
+  assert.doesNotMatch(client, /id="daily-look-consent-row"/);
+  assert.doesNotMatch(client, /Your selected photo is processed by OpenAI or Google Gemini only to create this portrait/);
+  assert.match(client, /function navigateToDailyLookPreview\(preview\)/);
+  assert.match(client, /card\.scrollTo\(\{ top, behavior: reducedMotion \? 'auto' : 'smooth' \}\)/);
+  assert.match(client, /function showDailyLookResult[\s\S]*navigateToDailyLookPreview\(preview\)/);
+});
+
 test('finished Daily Look images are returned and saved without a Vaultlix watermark', () => {
   assert.match(server, /Do not generate any text, logo or watermark/);
   assert.match(server, /return `data:image\/jpeg;base64,\$\{output\.toString\('base64'\)\}`/);
