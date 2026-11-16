@@ -1587,8 +1587,15 @@ async function createOpenAiDailyLook(image, style, apiKey, directedPrompt, canva
   return finishDailyLookImage(result.data?.[0]?.b64_json, canvas.sourceWidth, canvas.sourceHeight);
 }
 
-async function createGeminiDailyLook(image, apiKey, directedPrompt, canvas) {
-  const model = process.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image';
+function dailyLookGeminiModel(style) {
+  const useLite = style.collection === 'Selfies';
+  return useLite
+    ? (process.env.GEMINI_IMAGE_LITE_MODEL || 'gemini-3.1-flash-lite-image')
+    : (process.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image');
+}
+
+async function createGeminiDailyLook(image, style, apiKey, directedPrompt, canvas) {
+  const model = dailyLookGeminiModel(style);
   const response = await openAiJson(`https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(model)}:generateContent`, {
     method:'POST',
     headers:{ 'x-goog-api-key':apiKey, 'Content-Type':'application/json' },
@@ -1617,7 +1624,7 @@ async function createGeminiDailyLook(image, apiKey, directedPrompt, canvas) {
 async function createDailyLook(image, style, apiKey, variantIndex = 0, dimensions = null) {
   const directedPrompt = dailyLookDirectedPrompt(style, variantIndex);
   const canvas = dailyLookCanvas(style, dimensions);
-  if (style.provider === 'gemini') return createGeminiDailyLook(image, apiKey, directedPrompt, canvas);
+  if (style.provider === 'gemini') return createGeminiDailyLook(image, style, apiKey, directedPrompt, canvas);
   return createOpenAiDailyLook(image, style, apiKey, directedPrompt, canvas);
 }
 

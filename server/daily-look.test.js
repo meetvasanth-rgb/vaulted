@@ -107,6 +107,10 @@ test('curated portrait presets route server-side between OpenAI and Gemini witho
   assert.match(server, /const GEMINI_API_KEY = process\.env\.GEMINI_API_KEY/);
   assert.match(server, /provider:'gemini'/);
   assert.match(server, /gemini-3\.1-flash-image/);
+  assert.match(server, /gemini-3\.1-flash-lite-image/);
+  assert.match(server, /process\.env\.GEMINI_IMAGE_LITE_MODEL/);
+  assert.match(server, /const useLite = style\.collection === 'Selfies'/);
+  assert.doesNotMatch(server, /id:'natural-polish'[\s\S]*collection:'Face Booster', provider:'gemini'/);
   assert.match(server, /generativelanguage\.googleapis\.com\/v1\/models/);
   assert.match(server, /responseModalities:\['IMAGE'\]/);
   assert.doesNotMatch(server, /geminiDailyLookAspectRatio/);
