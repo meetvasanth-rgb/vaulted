@@ -78,6 +78,13 @@ test('hiding leaves the picture alone, and the active conversation is the defaul
   assert.equal(h.avatar.innerHTML, 'A');
 });
 
+test('typing remains visible above an open keyboard when the conversation is at the bottom', () => {
+  const fn = extractFunction('showTypingIndicator');
+  assert.match(fn, /document\.activeElement === messageInput/);
+  assert.match(fn, /CHAT_NEAR_BOTTOM_PX/);
+  assert.match(fn, /requestAnimationFrame\(\(\) => \{\s*chatBody\.scrollTop = chatBody\.scrollHeight;/);
+});
+
 test('every real typing indicator carries the avatar and the dots, and every caller passes its conversation', () => {
   // The static chat body plus the three places that rebuild it.
   const indicators = client.match(/<div class="typing-indicator peer-typing" id="typing-indicator" aria-label="Typing">\s*<span class="peer-typing-avatar" id="typing-avatar"><\/span><span class="peer-typing-dots"><i class="t-dot"><\/i><i class="t-dot"><\/i><i class="t-dot"><\/i><\/span>/g) || [];

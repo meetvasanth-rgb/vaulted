@@ -12529,6 +12529,14 @@ function typingAvatarHtml(room) {
 function showTypingIndicator(show, room = getActiveRoom(), activity = 'typing') {
   const indicator = document.getElementById('typing-indicator');
   if (!indicator) return;
+  const chatBody = document.getElementById('chat-body');
+  const messageInput = document.getElementById('msg-input');
+  // Measure before revealing the indicator. Adding its height can otherwise make
+  // a reader who was already at the bottom look as though they scrolled away.
+  const keepVisible = !!show && !!chatBody && (
+    document.activeElement === messageInput ||
+    chatBody.scrollHeight - chatBody.scrollTop - chatBody.clientHeight <= CHAT_NEAR_BOTTOM_PX
+  );
   // 'recording' swaps the dots for a microphone: they are recording a voice note, not typing.
   const recording = !!show && activity === 'recording';
   if (recording && !indicator.querySelector('.peer-typing-mic')) {
@@ -12545,6 +12553,11 @@ function showTypingIndicator(show, room = getActiveRoom(), activity = 'typing') 
     if (avatar && avatar.dataset.shown !== html) { avatar.innerHTML = html; avatar.dataset.shown = html; }
   }
   indicator.classList.toggle('show', show);
+  if (keepVisible) {
+    requestAnimationFrame(() => {
+      chatBody.scrollTop = chatBody.scrollHeight;
+    });
+  }
 }
 
 let crossVaultBannerTimer = null;
@@ -22472,9 +22485,8 @@ function showMessageSelection(controller, headerSelector) {
   const box = header ? header.getBoundingClientRect() : null;
   ui.bar.style.top = `${box ? Math.round(box.top) : 0}px`;
   ui.bar.style.height = box && box.height ? `${Math.round(box.height)}px` : '';
-  // Typing and selecting do not mix: put the keyboard away.
-  const active = document.activeElement;
-  if (active && (active.id === 'msg-input' || active.id === 'group-message-input')) active.blur();
+  // Keep an already-open keyboard in place. Reply selection is an extension of
+  // composing; dismissing and immediately reopening it makes the whole chat flicker.
   document.body.classList.add('msg-selecting');
   refreshMessageSelection();
 }
@@ -27546,13 +27558,15 @@ document.addEventListener('DOMContentLoaded', () => {
       if (event.isTrusted && speechToTextDraft?.inputId === inputId) cancelSpeechToText({ focus:false });
     });
   }
-  document.getElementById('chat-body')?.addEventListener('pointerdown', () => {
+  document.getElementById('chat-body')?.addEventListener('pointerdown', event => {
     const input = document.getElementById('msg-input');
-    if (document.activeElement === input) input.blur();
+    const pressedMessage = event.target?.closest?.('.msg');
+    if (document.activeElement === input && !pressedMessage) input.blur();
   });
-  document.getElementById('group-chat-body')?.addEventListener('pointerdown', () => {
+  document.getElementById('group-chat-body')?.addEventListener('pointerdown', event => {
     const input = document.getElementById('group-message-input');
-    if (document.activeElement === input) input.blur();
+    const pressedMessage = event.target?.closest?.('.group-msg, .group-message');
+    if (document.activeElement === input && !pressedMessage) input.blur();
   });
 });
 document.addEventListener('visibilitychange', () => {

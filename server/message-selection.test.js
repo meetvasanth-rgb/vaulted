@@ -61,13 +61,18 @@ test('the selection bar has back, count, reply, delete, forward and more; the em
   assert.match(client, /\.msg\.msg-selected::before,\.group-msg\.msg-selected::before\{content:'';position:absolute;z-index:-1/);
 });
 
-test('the bar takes over the chat header at its size and never steals the keyboard', () => {
+test('the bar takes over the chat header at its size and never dismisses or steals the keyboard', () => {
   const show = extract(client, 'showMessageSelection');
   assert.match(show, /ui\.bar\.style\.height = box && box\.height/);
-  assert.match(show, /active\.blur\(\)/);
+  assert.doesNotMatch(show, /\.blur\(\)/);
   assert.match(extract(client, 'ensureMessageSelectionUi'), /addEventListener\('mousedown', event => event\.preventDefault\(\)\)/);
   assert.match(client, /showMessageSelection\(directSelectionController\(\), '#s-chat \.chat-hdr'\)/);
   assert.match(groups, /showMessageSelection\(groupSelectionController\(\), '#group-chat \.group-chat-head'\)/);
+});
+
+test('pressing a message keeps an open keyboard while a plain chat-background tap may dismiss it', () => {
+  assert.match(client, /const pressedMessage = event\.target\?\.closest\?\.\('\.msg'\);\s*if \(document\.activeElement === input && !pressedMessage\) input\.blur\(\);/);
+  assert.match(client, /const pressedMessage = event\.target\?\.closest\?\.\('\.group-msg, \.group-message'\);\s*if \(document\.activeElement === input && !pressedMessage\) input\.blur\(\);/);
 });
 
 test('reply and forward rules', () => {
