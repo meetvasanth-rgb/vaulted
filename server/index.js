@@ -1610,14 +1610,22 @@ async function createLocalGoldenHour(image, canvas) {
   return `data:image/jpeg;base64,${output.toString('base64')}`;
 }
 
+function openAiImageSupportsComplexity(model) {
+  // The image edit API rejects `complexity` for GPT Image models that do not
+  // expose that control (notably gpt-image-2). Only send it for the model
+  // families that currently document support for the parameter.
+  return /^gpt-image-2\.(?:5|6)-(?:sunburst|flare)(?:$|-)/i.test(String(model || ''));
+}
+
 async function createOpenAiDailyLook(image, style, apiKey, directedPrompt, canvas) {
+  const model = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst';
   const form = new FormData();
-  form.append('model', process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst');
+  form.append('model', model);
   form.append('prompt', `${directedPrompt}\n\n${canvas.canvasInstruction}`);
   form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
   form.append('size', dailyLookProviderSize(canvas.sourceWidth, canvas.sourceHeight));
   form.append('quality', style.quality || process.env.OPENAI_IMAGE_QUALITY || 'medium');
-  if (style.complexity) form.append('complexity', style.complexity);
+  if (style.complexity && openAiImageSupportsComplexity(model)) form.append('complexity', style.complexity);
   form.append('output_format', 'jpeg');
   const response = await openAiJson('https://api.openai.com/v1/images/edits', {
     method:'POST', headers:{ Authorization:`Bearer ${apiKey}` }, body:form,
