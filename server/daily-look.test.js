@@ -153,6 +153,9 @@ test('curated portrait presets route server-side between OpenAI and Gemini witho
   assert.match(server, /Correct facial skin independently from warm café lamps, green foliage, sunset warmth or mixed ambient light/);
   assert.match(server, /id:'high-end-cafe'[\s\S]*5–6 PM transition from late daylight to early evening/);
   assert.match(server, /id:'high-end-cafe'[\s\S]*provider:'openai'[\s\S]*complexity:'medium'/);
+  assert.match(server, /id:'window-light-portrait'[\s\S]*provider:'openai'/);
+  assert.match(server, /The face is the exposure priority: meter it independently from the bright window/);
+  assert.match(server, /gently reduce minor temporary blemishes, uneven redness and camera noise while preserving pores/);
   assert.match(server, /do not render the scene with flat cool-white ceiling light/);
   assert.match(server, /approximately 5000–5200 K across the complete subject/);
   assert.match(server, /Match the subject to the café's physical scale and camera perspective/);
