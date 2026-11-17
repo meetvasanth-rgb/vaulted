@@ -132,8 +132,12 @@ test('a cancelled touch resets without replying', () => {
 
 test('wired for every message that can be replied to; it replies exactly like the selection bar', () => {
   const wire = extractFunction('wireMsgActions');
-  assert.match(wire, /if \(messageReplyable\(rec\)\) \{\s*attachSwipeToReply\(div, \(\) => \{\s*if \(selectMode\) return;\s*startReply\(rec, msgId, replyText\);\s*document\.getElementById\('msg-input'\)\?\.focus\(\{ preventScroll:true \}\);/);
-  assert.match(extractFunction('directSelectionController'), /startReply\(one\.entry\.rec, one\.id, one\.entry\.replyText\);\s*document\.getElementById\('msg-input'\)\?\.focus\(\{ preventScroll: true \}\);/);
+  assert.match(wire, /if \(messageReplyable\(rec\)\) \{\s*attachSwipeToReply\(div, \(\) => \{\s*if \(selectMode\) return;\s*startReply\(rec, msgId, replyText\);/);
+  assert.doesNotMatch(wire, /startReply\(rec, msgId, replyText\);\s*document\.getElementById\('msg-input'\)\?\.focus/,
+    'startReply owns the single, scroll-safe focus after its layout commits');
+  assert.doesNotMatch(extractFunction('directSelectionController'), /startReply\(one\.entry\.rec, one\.id, one\.entry\.replyText\);\s*document\.getElementById\('msg-input'\)\?\.focus/);
+  const start = extractFunction('startReply');
+  assert.match(start, /requestAnimationFrame\(\(\) => \{[\s\S]*requestAnimationFrame\(\(\) => \{[\s\S]*focus\(\{ preventScroll:true \}\)/);
 });
 
 test('in the native apps a right swipe that starts on a message replies instead of going back', () => {

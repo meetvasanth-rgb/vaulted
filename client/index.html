@@ -22590,7 +22590,6 @@ function directSelectionController() {
       const one = chosen()[0]; if (!one) return;
       exitSelectMode();
       startReply(one.entry.rec, one.id, one.entry.replyText);
-      document.getElementById('msg-input')?.focus({ preventScroll: true });
     },
     remove: () => confirmDeleteSelected(),
     forward() {
@@ -22784,7 +22783,6 @@ function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
     attachSwipeToReply(div, () => {
       if (selectMode) return;
       startReply(rec, msgId, replyText);
-      document.getElementById('msg-input')?.focus({ preventScroll:true });
     });
   }
   const bubble = textBubble || div.querySelector('.msg-meta');
@@ -30687,7 +30685,7 @@ function viewerInfoForRec(room, rec) {
     reactions: QUICK_REACTIONS,
     currentReaction: rec.reactionMine || null,
     onReact: emoji => sendReaction(room, rec.id, emoji),
-    onReply: () => { startReply(rec, rec.id, rec.fileName || 'Photo'); document.getElementById('msg-input')?.focus({ preventScroll: true }); },
+    onReply: () => startReply(rec, rec.id, rec.fileName || 'Photo'),
     onForward: messageForwardable(rec) ? () => showForwardAttachmentPicker(rec) : null,
   };
 }
@@ -31091,6 +31089,12 @@ function makeTinyThumbnail(base64, mime, maxDim = 64, quality = 0.55) {
 // in-thread quote on both ends can show real pixels without the payload
 // carrying the whole original photo.
 function startReply(rec, msgId, replyText) {
+  const chatBody = document.getElementById('chat-body');
+  const selectedRow = chatBody?.querySelector(`.msg[data-msg-id="${CSS.escape(msgId)}"]`);
+  const rowTopBefore = selectedRow?.getBoundingClientRect().top;
+  const wasNearBottom = chatBody
+    ? chatBody.scrollHeight - chatBody.scrollTop - chatBody.clientHeight <= CHAT_NEAR_BOTTOM_PX
+    : false;
   cancelReply();
   const isImageReply = !!(rec && rec.kind === 'file' && rec.isImage);
   const isVideoReply = !!(rec && rec.kind === 'file' && String(rec.mime || '').startsWith('video/'));
@@ -31136,7 +31140,25 @@ function startReply(rec, msgId, replyText) {
     if (textEl) textEl.textContent = replyTo.text;
   }
   document.getElementById('reply-preview').classList.add('show');
-  document.getElementById('msg-input').focus();
+
+  // Adding the reply strip changes the chat body's height. Focusing the input
+  // in the same frame used to make WebKit/OxygenOS first repaint the shorter
+  // message list and then resize it again for the keyboard. That two-step
+  // layout was the visible flash when Reply was tapped. Commit the reply strip
+  // first, keep the chosen message in exactly the same viewport position, and
+  // focus once on the following frame without allowing the browser to scroll
+  // the document on our behalf.
+  requestAnimationFrame(() => {
+    if (chatBody) {
+      if (wasNearBottom) chatBody.scrollTop = chatBody.scrollHeight;
+      else if (selectedRow?.isConnected && Number.isFinite(rowTopBefore)) {
+        chatBody.scrollTop += selectedRow.getBoundingClientRect().top - rowTopBefore;
+      }
+    }
+    requestAnimationFrame(() => {
+      document.getElementById('msg-input')?.focus({ preventScroll:true });
+    });
+  });
 }
 
 function startDirectMessageEdit(rec) {
