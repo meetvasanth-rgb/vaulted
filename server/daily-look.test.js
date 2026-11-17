@@ -200,6 +200,7 @@ test('the per-account rotation seed is unbounded and applied by modulo at the st
 });
 
 test('Daily Look offers etched camera, gallery and file source icons inside the preview', () => {
+  assert.match(client, /id="daily-look-source-tools-template"/);
   assert.match(client, /id="daily-look-camera-input"[^>]*accept="image\/\*"[^>]*capture="environment"/);
   assert.match(client, /id="daily-look-camera-button"[^>]*onclick="chooseDailyLookCamera\(\)"[^>]*aria-label="Take photo"/);
   assert.match(client, /id="daily-look-photo-button"[^>]*onclick="chooseDailyLookPhoto\(\)"[^>]*aria-label="Choose from gallery"/);
@@ -211,6 +212,11 @@ test('Daily Look offers etched camera, gallery and file source icons inside the 
   assert.match(client, /\.daily-look-source-button svg \.sketch-light/);
   assert.match(client, /function chooseDailyLookCamera\(\)/);
   assert.match(client, /function chooseDailyLookFile\(\)/);
+  assert.match(client, /function createDailyLookSourceTools\(\)/);
+  assert.equal(
+    (client.match(/preview\.querySelector\('\.daily-look-photo-actions'\) \|\| createDailyLookSourceTools\(\)/g) || []).length,
+    2,
+  );
 });
 
 test('Daily Look opens fresh instead of restoring the previous generated preview', () => {

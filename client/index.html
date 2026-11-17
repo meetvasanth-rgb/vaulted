@@ -5176,12 +5176,14 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 <div class="account-overlay" id="daily-look-overlay" onclick="if(event.target===this)closeDailyLook()">
   <div class="account-card daily-look-card" role="dialog" aria-modal="true" aria-labelledby="daily-look-title">
     <div class="account-head"><div><div class="account-kicker" id="daily-look-kicker">Up to 15 portraits daily</div><div class="account-title" id="daily-look-title">Portrait Studio</div></div><button class="account-close" type="button" onclick="closeDailyLook()" aria-label="Close">×</button></div>
-    <div class="daily-look-preview" id="daily-look-preview">
+    <template id="daily-look-source-tools-template">
       <div class="daily-look-photo-actions" id="daily-look-photo-actions" aria-label="Choose a portrait source">
         <button class="daily-look-source-button" id="daily-look-camera-button" type="button" onclick="chooseDailyLookCamera()" aria-label="Take photo" title="Take photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="sketch-light" d="M4 7.5h3l1.5-2h7l1.5 2h3v11H4z"/><path d="M3.5 7h3.2l1.5-2h7.6l1.5 2h3.2v11.5h-17z"/><circle cx="12" cy="12.7" r="3.4"/><path d="M18 9.2h.01"/></svg></button>
         <button class="daily-look-source-button" id="daily-look-photo-button" type="button" onclick="chooseDailyLookPhoto()" aria-label="Choose from gallery" title="Gallery"><svg viewBox="0 0 24 24" aria-hidden="true"><rect class="sketch-light" x="3.8" y="4.7" width="16.2" height="14.2" rx="2"/><rect x="3" y="4" width="17" height="15" rx="2"/><circle cx="8.2" cy="8.8" r="1.4"/><path d="m4.5 16 4.2-4.2 3.1 3 2.2-2.1 4.5 4.3"/></svg></button>
         <button class="daily-look-source-button" id="daily-look-file-button" type="button" onclick="chooseDailyLookFile()" aria-label="Choose from files" title="Files"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="sketch-light" d="M4.5 7.5h6l1.8 2H20v9.7H4.5z"/><path d="M3.5 7h6l2-2h3l2 2H20a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 .5-1z"/><path d="M3.5 10h17"/></svg></button>
       </div>
+    </template>
+    <div class="daily-look-preview" id="daily-look-preview">
       <div class="daily-look-preview-copy">Choose a clear photo of yourself to begin.</div>
     </div>
     <div class="daily-look-collections" id="daily-look-collections" aria-label="Portrait collections"></div>
@@ -14101,6 +14103,11 @@ function renderDailyLookStyles(styles = []) {
   holder.replaceChildren(...styleButtons);
 }
 
+function createDailyLookSourceTools() {
+  const template = document.getElementById('daily-look-source-tools-template');
+  return template?.content?.firstElementChild?.cloneNode(true) || null;
+}
+
 function resetDailyLookView() {
   resetDailyLookPreviewZoom();
   dailyLookSourceImage = null;
@@ -14108,7 +14115,7 @@ function resetDailyLookView() {
   dailyLookGeneratedImage = null;
   const preview = document.getElementById('daily-look-preview');
   if (preview) {
-    const sourceTools = preview.querySelector('.daily-look-photo-actions');
+    const sourceTools = preview.querySelector('.daily-look-photo-actions') || createDailyLookSourceTools();
     preview.style.removeProperty('--daily-look-aspect');
     preview.removeAttribute('tabindex');
     preview.replaceChildren();
@@ -14222,7 +14229,7 @@ async function handleDailyLookPhoto(event) {
     const preview = document.getElementById('daily-look-preview');
     if (preview) {
       resetDailyLookPreviewZoom();
-      const sourceTools = preview.querySelector('.daily-look-photo-actions');
+      const sourceTools = preview.querySelector('.daily-look-photo-actions') || createDailyLookSourceTools();
       preview.style.setProperty('--daily-look-aspect', `${prepared.width} / ${prepared.height}`);
       const image = document.createElement('img');
       image.src = dailyLookSourceImage;
