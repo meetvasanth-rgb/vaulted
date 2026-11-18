@@ -201,6 +201,7 @@ function showPrivateGroupAttachOptions() {
     <button type="button" class="attach-opt" data-input="group-camera-input"><span class="attach-opt-icon"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.5l1.6-2.4c.2-.3.5-.6.9-.6h6c.4 0 .7.3.9.6L20.5 6H21a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.8"/></svg></span><span class="attach-opt-label">Camera</span></button>
     <button type="button" class="attach-opt" data-input="group-image-input"><span class="attach-opt-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="1.7"/><path d="M21 15l-5.5-5.5a1.5 1.5 0 0 0-2.1 0L5 18"/></svg></span><span class="attach-opt-label">Gallery</span></button>
     <button type="button" class="attach-opt" data-input="group-file-input"><span class="attach-opt-icon"><svg viewBox="0 0 24 24"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg></span><span class="attach-opt-label">File</span></button>
+    <button type="button" class="attach-opt" data-input="group-photo-document-input"><span class="attach-opt-icon"><svg viewBox="0 0 24 24"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><rect x="8" y="11" width="8" height="6" rx="1"/><circle cx="10.5" cy="13.5" r=".8"/><path d="m9 16 2-2 1.5 1.5 1-1 1.5 1.5"/></svg></span><span class="attach-opt-label">Photo file</span></button>
     <button type="button" class="attach-opt" id="group-attach-gif"><span class="attach-opt-icon" style="font-weight:800;font-size:12px;color:#682C43">GIF</span><span class="attach-opt-label">GIF</span></button>`;
   document.body.appendChild(popover);
   for (const option of popover.querySelectorAll('[data-input]')) option.onclick = event => {
@@ -337,6 +338,7 @@ async function sendPrivateGroupGif(item, searchQuery) {
 async function handlePrivateGroupFileSelect(event) {
   const files = Array.from(event.target.files || []); event.target.value = '';
   if (!files.length) return;
+  const imageAsDocument = event.target.id === 'group-photo-document-input';
   const preparation = beginPhotoSendProgress(files.length,
     `Preparing ${files.length === 1 ? 'attachment' : files.length + ' attachments'}…`, null,
     files.find(file => String(file.type || '').startsWith('image/')) || null);
@@ -351,7 +353,7 @@ async function handlePrivateGroupFileSelect(event) {
     preparation.update(`Preparing ${fileIndex + 1} of ${files.length}…`);
     const isVideo = String(file.type || '').startsWith('video/');
     const isImage = String(file.type || '').startsWith('image/');
-    if (isImage) {
+    if (isImage && !imageAsDocument) {
       if (file.size > MAX_PRIVATE_GROUP_FILE_BYTES) { toast(`“${file.name}” is too large — maximum 25MB`); continue; }
       try {
         const compressed = await compressImageFile(file);

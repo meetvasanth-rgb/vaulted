@@ -933,7 +933,8 @@ html.voice-transcript-ready .voice-transcript-action{display:block}
 .attach-btn { width:28px; height:38px; background:none; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; opacity:0.5; transition:opacity 0.15s; padding:0; }
 .attach-btn:hover { opacity:0.9; }
 .attach-btn svg { width:22px; height:22px; fill:none; stroke:#7A6E65; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
-.attach-popover { position:fixed; display:flex; gap:6px; background:#fff; border-radius:18px; padding:8px; box-shadow:0 4px 20px rgba(26,25,22,0.22); z-index:999; animation:attachPopIn 0.14s ease; }
+.attach-popover { position:fixed; display:flex; gap:6px; max-width:calc(100vw - 16px); overflow-x:auto; scrollbar-width:none; background:#fff; border-radius:18px; padding:8px; box-shadow:0 4px 20px rgba(26,25,22,0.22); z-index:999; animation:attachPopIn 0.14s ease; }
+.attach-popover::-webkit-scrollbar { display:none; }
 /* The group chat is a full-screen fixed overlay at z-index 10018, so its attach menu must sit above it (but below the KLIPY picker at 10020). */
 #group-attach-popover { z-index:10019; }
 /* Direct-conversation file cards use fixed dark text; keep them readable inside a dark "mine" group bubble. */
@@ -3965,6 +3966,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
          media picker directly with both locally stored photos and videos,
          while the File action continues to use the document picker. -->
     <input type="file" id="image-input" multiple style="display:none" accept="image/*,video/*" onchange="handleFileSelect(event)"/>
+    <input type="file" id="photo-document-input" multiple style="display:none" accept="image/*,.heic,.heif" onchange="handlePhotoDocumentSelect(event)"/>
     <input type="file" id="file-input" multiple style="display:none" accept="application/pdf,.doc,.docx,.txt,.zip" onchange="handleFileSelect(event)"/>
     <input type="file" id="camera-input" style="display:none" accept="image/*" capture="environment" onchange="handleFileSelect(event)"/>
     <textarea id="msg-input" placeholder="Type a message…" data-i18n-placeholder="message_placeholder" rows="1" disabled></textarea>
@@ -4111,6 +4113,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
   <footer class="group-chat-footer" id="group-chat-footer">
     <button class="group-attach-btn" id="group-attach-btn" type="button" onclick="showPrivateGroupAttachOptions()" aria-label="Attach photo or file">+</button>
     <input type="file" id="group-image-input" multiple hidden accept="image/*,video/*" onchange="handlePrivateGroupFileSelect(event)"/>
+    <input type="file" id="group-photo-document-input" multiple hidden accept="image/*,.heic,.heif" onchange="handlePrivateGroupFileSelect(event)"/>
     <input type="file" id="group-file-input" multiple hidden accept="application/pdf,.doc,.docx,.txt,.zip" onchange="handlePrivateGroupFileSelect(event)"/>
     <input type="file" id="group-camera-input" hidden accept="image/*" capture="environment" onchange="handlePrivateGroupFileSelect(event)"/>
     <textarea id="group-message-input" maxlength="4000" rows="1" placeholder="Message the group…" oninput="updatePrivateGroupComposer()"></textarea>
@@ -12956,6 +12959,12 @@ window.addEventListener('vaultlix:share-image-failed', () => {
   if (!numberCardShareInFlight) return;
   resetNumberCardShareState();
   toast('Could not open sharing. Please try again.');
+});
+window.addEventListener('vaultlix:media-saved', event => {
+  toast(event.detail?.destination === 'photos' ? 'Saved to Photos' : 'Saved');
+});
+window.addEventListener('vaultlix:media-save-failed', () => {
+  toast('Could not save to Photos. Allow photo access in iPhone Settings and try again.');
 });
 
 function resetNumberCardShareState() {
@@ -28664,6 +28673,10 @@ function showAttachOptions() {
       <span class="attach-opt-icon"><svg viewBox="0 0 24 24"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg></span>
       <span class="attach-opt-label">File</span>
     </button>
+    <button type="button" class="attach-opt" id="attach-photo-document">
+      <span class="attach-opt-icon"><svg viewBox="0 0 24 24"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><rect x="8" y="11" width="8" height="6" rx="1"/><circle cx="10.5" cy="13.5" r=".8"/><path d="m9 16 2-2 1.5 1.5 1-1 1.5 1.5"/></svg></span>
+      <span class="attach-opt-label">Photo file</span>
+    </button>
     <button type="button" class="attach-opt" id="attach-gif">
       <span class="attach-opt-icon" style="font-weight:800;font-size:12px;color:#682C43">GIF</span>
       <span class="attach-opt-label">GIF</span>
@@ -28673,6 +28686,7 @@ function showAttachOptions() {
   pop.querySelector('#attach-camera').onclick = (e) => { e.stopPropagation(); closeAttachOptions(); document.getElementById('camera-input').click(); };
   pop.querySelector('#attach-gallery').onclick = (e) => { e.stopPropagation(); closeAttachOptions(); document.getElementById('image-input').click(); };
   pop.querySelector('#attach-doc').onclick = (e) => { e.stopPropagation(); closeAttachOptions(); document.getElementById('file-input').click(); };
+  pop.querySelector('#attach-photo-document').onclick = (e) => { e.stopPropagation(); closeAttachOptions(); document.getElementById('photo-document-input').click(); };
   pop.querySelector('#attach-gif').onclick = (e) => { e.stopPropagation(); closeAttachOptions(); openKlipyPicker(); };
   setTimeout(() => document.addEventListener('click', handleAttachOutsideClick), 0);
 }
@@ -28695,6 +28709,14 @@ async function handleFileSelect(event) {
   if (!files.length || !room) return;
 
   await sendSelectedFilesToRoom(room, files);
+}
+
+async function handlePhotoDocumentSelect(event) {
+  const room = getActiveRoom();
+  const files = Array.from(event.target.files || []);
+  event.target.value = '';
+  if (!files.length || !room) return;
+  await sendSelectedFilesToRoom(room, files, { imageAsDocument:true });
 }
 
 // WhatsApp-style optimistic album: the selected files appear in the chat
@@ -28760,8 +28782,9 @@ function beginPendingMediaAlbum(room, files) {
 // Extension join the exact same preparation/encryption path as images picked
 // from inside a conversation. Native code only stages the bytes until the
 // person chooses a chat; nothing is uploaded or sent before that choice.
-async function sendSelectedFilesToRoom(room, files) {
+async function sendSelectedFilesToRoom(room, files, options = {}) {
   if (!room || !Array.isArray(files) || !files.length) return;
+  const imageAsDocument = options.imageAsDocument === true;
 
   const valid = [];
   const tooLarge = [];
@@ -28782,12 +28805,19 @@ async function sendSelectedFilesToRoom(room, files) {
   const media = [];
   const documents = [];
   let currentVideoController = null;
-  const selectedMediaFiles = valid.filter(file => String(file.type || '').startsWith('image/') || String(file.type || '').startsWith('video/'));
+  const selectedMediaFiles = valid.filter(file => String(file.type || '').startsWith('video/')
+    || (!imageAsDocument && String(file.type || '').startsWith('image/')));
   let pendingAlbum = selectedMediaFiles.length > 1 ? beginPendingMediaAlbum(room, selectedMediaFiles) : null;
   try {
     for (let fileIndex = 0; fileIndex < valid.length; fileIndex++) {
       const file = valid[fileIndex];
-      if (file.type.startsWith('image/')) {
+      if (file.type.startsWith('image/') && imageAsDocument) {
+        // Deliberately preserve the exact image bytes and filename. This is
+        // the "photo as document" path: no canvas, resize, JPEG conversion,
+        // thumbnail composer or one-time-view prompt is involved.
+        const base64 = await fileToBase64(file);
+        documents.push({ file, base64, pdfPreview:null, videoThumb:null });
+      } else if (file.type.startsWith('image/')) {
         // Compressed here, before anything else touches it — base64/encrypt/
         // send all work on the already-shrunk bytes, and so does the picker
         // preview below.

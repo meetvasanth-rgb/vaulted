@@ -6,6 +6,7 @@ import AVKit
 import UserNotifications
 import LocalAuthentication
 import Speech
+import Photos
 import WebRTC
 import ObjectiveC.runtime
 #if DEBUG
@@ -1104,6 +1105,33 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         presenter.present(picker, animated: true)
     }
 
+    private func saveImageToPhotos(_ fileURL: URL) {
+        let finish: (Bool) -> Void = { [weak self] success in
+            DispatchQueue.main.async {
+                try? FileManager.default.removeItem(at: fileURL)
+                self?.emit(name: success ? "vaultlix:media-saved" : "vaultlix:media-save-failed",
+                           detail: success ? ["destination":"photos"] : [:])
+            }
+        }
+        let writeAsset = {
+            PHPhotoLibrary.shared().performChanges({
+                let request = PHAssetCreationRequest.forAsset()
+                request.addResource(with: .photo, fileURL: fileURL, options: nil)
+            }, completionHandler: { success, _ in finish(success) })
+        }
+        if #available(iOS 14, *) {
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+                if status == .authorized || status == .limited { writeAsset() }
+                else { finish(false) }
+            }
+        } else {
+            PHPhotoLibrary.requestAuthorization { status in
+                if status == .authorized { writeAsset() }
+                else { finish(false) }
+            }
+        }
+    }
+
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         clearPendingDocumentExport()
     }
@@ -1500,6 +1528,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
                 emit(name: "vaultlix:share-image-failed", detail: [:])
                 return
             }
+            let mimeStart = dataURL.index(dataURL.startIndex, offsetBy: 5)
+            let mime = String(dataURL[mimeStart..<marker.lowerBound]).lowercased()
             let requested = (body["filename"] as? String) ?? "vaultlix-file"
             let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._- "))
             let safeName = requested.unicodeScalars.map { allowed.contains($0) ? String($0) : "_" }.joined()
@@ -1508,7 +1538,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
                 .appendingPathComponent("vaultlix-save-\(UUID().uuidString)-\(filename)")
             do {
                 try data.write(to: fileURL, options: .atomic)
-                presentSaveFile(fileURL)
+                if mime.hasPrefix("image/") { saveImageToPhotos(fileURL) }
+                else { presentSaveFile(fileURL) }
             } catch { emit(name: "vaultlix:share-image-failed", detail: [:]) }
             return
         }

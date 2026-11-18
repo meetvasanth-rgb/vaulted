@@ -7,6 +7,7 @@ const root = path.join(__dirname, '..');
 const client = fs.readFileSync(path.join(root, 'client/index.html'), 'utf8');
 const android = fs.readFileSync(path.join(root, 'mobile/android/app/src/main/java/com/vaultlix/app/MainActivity.java'), 'utf8');
 const ios = fs.readFileSync(path.join(root, 'mobile/ios/App/App/SceneDelegate.swift'), 'utf8');
+const iosInfo = fs.readFileSync(path.join(root, 'mobile/ios/App/App/Info.plist'), 'utf8');
 
 test('installed apps keep native download and share actions separate', () => {
   assert.match(client, /function downloadDataUri\(dataUri, filename\)[\s\S]{0,120}transferDataUri\(dataUri, filename, 'save'\)/);
@@ -22,7 +23,10 @@ test('installed apps keep native download and share actions separate', () => {
   assert.match(ios, /if action == "shareMedia"/);
   assert.match(ios, /if action == "saveMedia"/);
   assert.match(ios, /presentShareImage\(fileURL\)/);
-  assert.match(ios, /presentSaveFile\(fileURL\)/);
+  assert.match(ios, /if mime\.hasPrefix\("image\/"\) \{ saveImageToPhotos\(fileURL\) \}/);
+  assert.match(ios, /else \{ presentSaveFile\(fileURL\) \}/);
+  assert.match(ios, /PHPhotoLibrary\.requestAuthorization\(for: \.addOnly\)/);
+  assert.match(iosInfo, /NSPhotoLibraryAddUsageDescription/);
 });
 
 test('ordinary image and file messages can be forwarded into another encrypted conversation', () => {
