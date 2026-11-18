@@ -77,6 +77,8 @@ test('the interface motion layer animates screens, sheets and portrait choices a
   assert.match(source, /class="daily-look-bold-count"/);
   assert.match(source, /class="daily-look-count-step"/);
   assert.match(source, /@keyframes daily-look-bold-step/);
+  assert.match(source, /@keyframes daily-look-bold-step-android/);
+  assert.match(source, /nativePlatform\(\) === 'android'\) layer\.classList\.add\('android-smooth'\)/);
   assert.match(source, />01<\/b><em>LIGHT</);
   assert.match(source, />02<\/b><em>STYLE</);
   assert.match(source, />03<\/b><em>DETAILS</);

@@ -163,7 +163,10 @@ test('curated portrait presets route server-side between OpenAI and Gemini witho
   assert.match(server, /Facial identity has absolute priority over the café styling/);
   assert.match(server, /function openAiImageSupportsComplexity\(model\)/);
   assert.match(server, /\^gpt-image-2\\\.\(\?:5\|6\)-\(\?:sunburst\|flare\)/);
-  assert.match(server, /if \(style\.complexity && openAiImageSupportsComplexity\(model\)\) form\.append\('complexity', style\.complexity\)/);
+  assert.match(server, /const canUseComplexity = !!style\.complexity && openAiImageSupportsComplexity\(model\)/);
+  assert.match(server, /if \(includeComplexity\) form\.append\('complexity', style\.complexity\)/);
+  assert.match(server, /response\.status === 400 && canUseComplexity\) response = await request\(false\)/);
+  assert.match(server, /180000/);
   assert.match(server, /SELFIE_PORTRAIT_FINISH_PROMPT/);
   assert.match(server, /style\.collection === 'Selfies' \? `\\n\\n\$\{SELFIE_PORTRAIT_FINISH_PROMPT\}` : ''/);
   assert.match(server, /The edit is incomplete if it only replaces the background or leaves the face flat, grey, dull or underexposed/);

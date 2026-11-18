@@ -1621,18 +1621,30 @@ function openAiImageSupportsComplexity(model) {
 
 async function createOpenAiDailyLook(image, style, apiKey, directedPrompt, canvas) {
   const model = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst';
-  const form = new FormData();
-  form.append('model', model);
-  form.append('prompt', `${directedPrompt}\n\n${canvas.canvasInstruction}`);
-  form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
-  form.append('size', dailyLookProviderSize(canvas.sourceWidth, canvas.sourceHeight));
-  form.append('quality', style.quality || process.env.OPENAI_IMAGE_QUALITY || 'medium');
-  if (style.complexity && openAiImageSupportsComplexity(model)) form.append('complexity', style.complexity);
-  form.append('output_format', 'jpeg');
-  const response = await openAiJson('https://api.openai.com/v1/images/edits', {
-    method:'POST', headers:{ Authorization:`Bearer ${apiKey}` }, body:form,
-  });
-  if (!response.ok) throw new Error(`image-${response.status}`);
+  const canUseComplexity = !!style.complexity && openAiImageSupportsComplexity(model);
+  const request = async includeComplexity => {
+    const form = new FormData();
+    form.append('model', model);
+    form.append('prompt', `${directedPrompt}\n\n${canvas.canvasInstruction}`);
+    form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
+    form.append('size', dailyLookProviderSize(canvas.sourceWidth, canvas.sourceHeight));
+    form.append('quality', style.quality || process.env.OPENAI_IMAGE_QUALITY || 'medium');
+    if (includeComplexity) form.append('complexity', style.complexity);
+    form.append('output_format', 'jpeg');
+    return openAiJson('https://api.openai.com/v1/images/edits', {
+      method:'POST', headers:{ Authorization:`Bearer ${apiKey}` }, body:form,
+    }, 180000);
+  };
+  let response = await request(canUseComplexity);
+  // Provider/model rollouts do not always expose optional planning controls at
+  // the same moment. A focused portrait edit should still work without one.
+  if (!response.ok && response.status === 400 && canUseComplexity) response = await request(false);
+  if (!response.ok) {
+    const failure = await response.json().catch(() => ({}));
+    const reason = String(failure?.error?.param || failure?.error?.code || failure?.error?.type || 'unknown')
+      .toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40);
+    throw new Error(`image-${response.status}-${reason || 'unknown'}`);
+  }
   const result = await response.json();
   return finishDailyLookImage(result.data?.[0]?.b64_json, canvas.sourceWidth, canvas.sourceHeight);
 }
