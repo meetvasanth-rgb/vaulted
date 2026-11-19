@@ -109,6 +109,14 @@ test('cached history resumes with a delta while a fresh device requests only a 5
   assert.equal(bootstrap.request.bootstrapLimit, 50);
 });
 
+test('native records carrying their server cursor resume with a delta', () => {
+  const room = { code:'room', token:'token', lastReceiptSeq:8, lastReadReceiptSeq:7, lastReactionSeq:6, lastDeletionSeq:5 };
+  const delta = run(`historyRestoreSyncPlan(${JSON.stringify(room)}, [{id:'a',serverSeq:51},{id:'b',serverSeq:54}])`);
+  assert.equal(delta.mode, 'delta');
+  assert.equal(delta.request.lastSeq, 54);
+  assert.equal('full' in delta.request, false);
+});
+
 // ---- wiring ----------------------------------------------------------------
 
 test('every way a message or conversation is removed also removes the stored copy', () => {

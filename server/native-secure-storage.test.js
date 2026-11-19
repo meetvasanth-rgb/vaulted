@@ -36,6 +36,17 @@ test('native cache follows render, individual deletion, clear-chat and room remo
   assert.match(client, /function removeRoomFromState[\s\S]*secureNativeClearConversation\(code\)/);
 });
 
+test('cold start can read recent encrypted native history on both platforms', () => {
+  assert.match(android, /synchronized String recent\(String conversationId, int requestedLimit\)[\s\S]*Cipher\.DECRYPT_MODE/);
+  assert.match(androidActivity, /public String secureLoadMessages\(String conversationId, int limit\)/);
+  assert.match(ios, /func recent\(conversationID: String, limit requestedLimit: Int\)[\s\S]*AES\.GCM\.open/);
+  assert.match(iosScene, /action == "secureLoadMessages"[\s\S]*vaultlix:secure-messages/);
+  assert.match(iosScene, /vaultlix:secure-history-capability/);
+  assert.match(client, /window\.__vaultlixNativeSecureHistory !== true/);
+  assert.match(client, /async function restoreSecureNativeHistory\(room\)[\s\S]*secureNativeLoadMessages/);
+  assert.match(client, /async function restoreLocalHistory\(room\)[\s\S]*restoreSecureNativeHistory\(room\)/);
+});
+
 test('disappearing messages never enter the native plaintext-derived cache', () => {
   const eligibility = client.match(/function nativeMessageCacheEligible\(room, rec\)[\s\S]*?\n}/)[0];
   const context = {};

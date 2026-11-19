@@ -351,9 +351,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         }
         guard let data = try? JSONSerialization.data(withJSONObject: safeDetail),
               let json = String(data: data, encoding: .utf8) else { return }
-        let persist = name == "vaultlix:voip-token"
-            ? "window.__vaultlixNativeVoipRegistration=\(json);"
-            : ""
+        let persist: String
+        if name == "vaultlix:voip-token" {
+            persist = "window.__vaultlixNativeVoipRegistration=\(json);"
+        } else if name == "vaultlix:secure-history-capability" {
+            persist = "window.__vaultlixNativeSecureHistory=true;"
+        } else {
+            persist = ""
+        }
         let script = "\(persist)window.dispatchEvent(new CustomEvent(\(String(reflecting: name)),{detail:\(json)}));"
         webView.evaluateJavaScript(script)
     }
@@ -1268,6 +1273,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             emit(name: "vaultlix:emoji-effect-capability", detail: ["available": true])
             emit(name: "vaultlix:speech-to-text-capability", detail: ["available": SFSpeechRecognizer() != nil])
             emit(name: "vaultlix:voice-transcript-capability", detail: ["available": SFSpeechRecognizer() != nil])
+            emit(name: "vaultlix:secure-history-capability", detail: ["available": true])
             if let token = VaultlixCallManager.shared.voIPToken
                 ?? UserDefaults.standard.string(forKey: "vaultlix.voipToken") {
                 let environment = UserDefaults.standard.string(forKey: "vaultlix.voipEnvironment") ?? "production"
@@ -1582,6 +1588,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
            let plaintext = body["plaintext"] as? String {
             _ = SecureMessageStore.shared.put(conversationID: conversationID, messageID: messageID,
                                               plaintext: plaintext, createdAt: body["createdAt"] as? Int64 ?? Int64(Date().timeIntervalSince1970 * 1000))
+            return
+        }
+        if action == "secureLoadMessages",
+           let conversationID = body["conversationId"] as? String,
+           let requestID = body["requestId"] as? String {
+            let requestedLimit = body["limit"] as? Int ?? 50
+            let records = SecureMessageStore.shared.recent(conversationID: conversationID, limit: requestedLimit)
+            emit(name: "vaultlix:secure-messages", detail: ["requestId": requestID, "records": records])
             return
         }
         if action == "secureDeleteMessage",

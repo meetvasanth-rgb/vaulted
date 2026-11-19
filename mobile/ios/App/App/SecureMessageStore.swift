@@ -48,6 +48,37 @@ final class SecureMessageStore {
         }
     }
 
+    func recent(conversationID: String, limit requestedLimit: Int) -> [String] {
+        queue.sync {
+            guard valid(conversationID), open() else { return [] }
+            let limit = max(1, min(200, requestedLimit))
+            let sql = "SELECT message_id,nonce,ciphertext,tag FROM messages WHERE conversation_id=? ORDER BY created_at DESC LIMIT ?"
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { return [] }
+            defer { sqlite3_finalize(statement) }
+            bind(conversationID, to: statement, at: 1)
+            sqlite3_bind_int(statement, 2, Int32(limit))
+            var newestFirst: [String] = []
+            while sqlite3_step(statement) == SQLITE_ROW {
+                guard let messageValue = sqlite3_column_text(statement, 0),
+                      let nonceData = columnData(statement, at: 1),
+                      let ciphertext = columnData(statement, at: 2),
+                      let tag = columnData(statement, at: 3),
+                      let keyData = loadKey(account: messageKeyAccount(conversationID, String(cString: messageValue))),
+                      let nonce = try? AES.GCM.Nonce(data: nonceData),
+                      let box = try? AES.GCM.SealedBox(nonce: nonce, ciphertext: ciphertext, tag: tag),
+                      let cleartext = try? AES.GCM.open(box, using: SymmetricKey(data: keyData)),
+                      let record = String(data: cleartext, encoding: .utf8) else {
+                    // A missing per-message key is the expected result of a
+                    // cryptographic erase. Skip only that record.
+                    continue
+                }
+                newestFirst.append(record)
+            }
+            return newestFirst.reversed()
+        }
+    }
+
     func clear(conversationID: String) -> Bool {
         queue.sync {
             guard valid(conversationID), open() else { return false }
@@ -130,6 +161,12 @@ final class SecureMessageStore {
 
     private func bind(_ value: Data, to statement: OpaquePointer?, at index: Int32) {
         _ = value.withUnsafeBytes { sqlite3_bind_blob(statement, index, $0.baseAddress, Int32($0.count), unsafeBitCast(-1, to: sqlite3_destructor_type.self)) }
+    }
+
+    private func columnData(_ statement: OpaquePointer?, at index: Int32) -> Data? {
+        let count = Int(sqlite3_column_bytes(statement, index))
+        guard count > 0, let bytes = sqlite3_column_blob(statement, index) else { return nil }
+        return Data(bytes: bytes, count: count)
     }
 
     private func valid(_ value: String) -> Bool { !value.isEmpty && value.count <= 128 }

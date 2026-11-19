@@ -1966,6 +1966,11 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public String secureLoadMessages(String conversationId, int limit) {
+            return secureMessageStore.recent(conversationId, limit);
+        }
+
+        @JavascriptInterface
         public boolean secureDeleteMessage(String conversationId, String messageId) {
             return secureMessageStore.delete(conversationId, messageId);
         }

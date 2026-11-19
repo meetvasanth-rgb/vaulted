@@ -5509,6 +5509,12 @@ const secureNativeCachedRecords = new WeakSet();
 const secureNativeCacheQueue = [];
 const secureNativeCacheKeys = new Set();
 let secureNativeCacheScheduled = false;
+const secureNativeHistoryReplies = new Map();
+
+window.addEventListener('vaultlix:secure-messages', event => {
+  const detail = event.detail || {};
+  secureNativeHistoryReplies.get(detail.requestId)?.(Array.isArray(detail.records) ? detail.records : []);
+});
 
 function nativeMessageCacheEligible(room, rec) {
   // Disappearing messages must never acquire a second, native plaintext-derived
@@ -5542,6 +5548,75 @@ function secureNativeStoreMessage(room, rec) {
     }
     secureNativeCachedRecords.add(rec);
   } catch (e) { console.warn('Native encrypted cache write failed'); }
+}
+
+function secureNativeLoadMessages(conversationId, limit = 50) {
+  if (!conversationId) return Promise.resolve([]);
+  try {
+    if (typeof window.VaultlixAndroid?.secureLoadMessages === 'function') {
+      const value = JSON.parse(window.VaultlixAndroid.secureLoadMessages(conversationId, limit) || '[]');
+      return Promise.resolve(Array.isArray(value) ? value : []);
+    }
+    // Older iOS builds expose the generic bridge but do not understand this
+    // action. Only call after the new native shell advertises support, so a
+    // web deployment never delays chats on an older App Store build.
+    if (!window.webkit?.messageHandlers?.vaultlixCall || window.__vaultlixNativeSecureHistory !== true)
+      return Promise.resolve([]);
+    const requestId = crypto.randomUUID();
+    return new Promise(resolve => {
+      const finish = records => {
+        clearTimeout(timer);
+        secureNativeHistoryReplies.delete(requestId);
+        resolve(records);
+      };
+      const timer = setTimeout(() => finish([]), 5000);
+      secureNativeHistoryReplies.set(requestId, finish);
+      try {
+        window.webkit.messageHandlers.vaultlixCall.postMessage({
+          action:'secureLoadMessages', conversationId, limit, requestId,
+        });
+      } catch (_) { finish([]); }
+    });
+  } catch (_) { return Promise.resolve([]); }
+}
+
+function parseSecureNativeHistory(room, values) {
+  const records = [];
+  for (const value of values || []) {
+    let rec;
+    try { rec = typeof value === 'string' ? JSON.parse(value) : value; } catch (_) { continue; }
+    if (!rec || typeof rec !== 'object' || typeof rec.id !== 'string' || !rec.id
+        || rec.deleted || rec.replyData?.deleted || cacheRecordErased(room.code, rec.id)
+        || ['sys', 'blocked', 'attachment-loading', 'attachment-unavailable'].includes(rec.kind)
+        || !nativeMessageCacheEligible(room, rec)) continue;
+    const serverSeq = Number(rec.serverSeq || rec.seq) || 0;
+    if (serverSeq > 0) rec.serverSeq = serverSeq;
+    records.push(rec);
+  }
+  return records.slice(-HISTORY_LOAD_LIMIT);
+}
+
+async function restoreSecureNativeHistory(room) {
+  if (!isNativeApp() || !room?.code) return [];
+  const records = parseSecureNativeHistory(room, await secureNativeLoadMessages(room.code, HISTORY_LOAD_LIMIT));
+  const now = Date.now();
+  for (const rec of records) {
+    if (Number(rec.deleteAt || rec.expiresAt) > 0 && Number(rec.deleteAt || rec.expiresAt) <= now) {
+      secureNativeDeleteMessage(room.code, rec.id);
+      continue;
+    }
+    room.seenMsgIds.add(rec.id);
+    if (room.messages.some(existing => existing.id === rec.id)) continue;
+    room.messages.push(rec);
+    const seq = Number(rec.serverSeq) || 0;
+    if (seq > 0 && !(seq >= room.historyOldestSeq)) room.historyOldestSeq = seq;
+  }
+  if (records.length) {
+    room.messages.sort((left, right) => (Number(left?.ts) || 0) - (Number(right?.ts) || 0));
+    room.localHistoryRestored = true;
+    if (isRoomVisible(room)) renderChatBody(room);
+  }
+  return records;
 }
 
 // Android's JavaScript bridge is synchronous. Creating a hardware-backed key
@@ -5832,7 +5907,7 @@ function historyReconcilePlan({ local, serverMessages, tombstoneIds, clearedAt }
 // small delta instead of downloading the retained conversation again.
 function historyRestoreSyncPlan(room, localMessages) {
   const localLastSeq = (localMessages || []).reduce((highest, message) =>
-    Math.max(highest, Number(message?.seq) || 0), 0);
+    Math.max(highest, Number(message?.seq || message?.serverSeq) || 0), 0);
   const hasLocalWindow = localLastSeq > 0;
   return {
     mode:hasLocalWindow ? 'delta' : 'bootstrap',
@@ -24703,6 +24778,7 @@ async function applyRestoredHistory(room, messages, nowTs, { confirmReads = true
             rec = null;
           } else if (rec) {
             rec.isMe = msg.from === room.token;
+            rec.serverSeq = Number(msg.seq) || 0;
             applyReactionSnapshot(rec, msg.reactions, room.token);
           }
         }
@@ -24766,6 +24842,7 @@ async function applyRestoredHistory(room, messages, nowTs, { confirmReads = true
     }
     const placeholder = { id:msg.id, isMe:msg.from === room.token, name:msg.name,
       time:formatMsgTime(msg.ts), ts:Number(msg.ts) || 0, kind:'attachment-loading',
+      serverSeq:Number(msg.seq) || 0,
       encryptedAttachmentRef:msg.content, fromToken:msg.from,
       albumGroupId:msg.albumGroupId || null, albumIndex:Number.isInteger(msg.albumIndex) ? msg.albumIndex : null,
       albumCount:Number.isInteger(msg.albumCount) ? msg.albumCount : null,
@@ -24795,17 +24872,23 @@ function restoreOwnTicks(room, messages) {
 // stored on this device. Returns them so the server check can reconcile.
 async function restoreLocalHistory(room) {
   let stored = [];
+  let nativeRecords = [];
   try {
     stored = await historyStoreLoad(room.code);
-    if (!stored.length || !room.sharedKey) return stored;
-    await applyRestoredHistory(room, stored, Date.now());
-    room.localHistoryRestored = true;
-    // Bring back the delivered / read ticks saved with our own messages.
-    restoreOwnTicks(room, stored);
+    if (stored.length && room.sharedKey) {
+      await applyRestoredHistory(room, stored, Date.now());
+      room.localHistoryRestored = true;
+      // Bring back the delivered / read ticks saved with our own messages.
+      restoreOwnTicks(room, stored);
+    }
+    // WKWebView/IndexedDB can be evicted independently of the installed app.
+    // The native SQLCipher cache survives that cold start, is decrypted only
+    // after device unlock, and lets the conversation paint before networking.
+    nativeRecords = await restoreSecureNativeHistory(room);
   } catch (error) {
     console.warn('Local history could not be restored', error?.message);
   }
-  return stored;
+  return [...stored, ...nativeRecords];
 }
 
 async function deriveCandidateRoomKey(session, peerPubKeyB64) {
@@ -25462,6 +25545,7 @@ async function doPoll(room) {
           } else if (rec?.kind === 'edit') {
             applyDirectMessageEdit(room, rec);
           } else if (rec) {
+            rec.serverSeq = Number(msg.seq) || 0;
             applyReactionSnapshot(rec, msg.reactions, room.token);
             const isPerspectiveCallEvent = rec.kind === 'sys' && !!rec.callEvent;
             room.messages.push(rec);

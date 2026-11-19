@@ -13,7 +13,10 @@ import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Enumeration;
+
+import org.json.JSONArray;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -92,6 +95,44 @@ final class SecureMessageStore {
         } catch (Exception error) {
             return false;
         }
+    }
+
+    synchronized String recent(String conversationId, int requestedLimit) {
+        JSONArray result = new JSONArray();
+        if (!validId(conversationId, 128)) return result.toString();
+        int limit = Math.max(1, Math.min(200, requestedLimit));
+        ArrayList<String> newestFirst = new ArrayList<>();
+        try {
+            open();
+            KeyStore store = KeyStore.getInstance("AndroidKeyStore");
+            store.load(null);
+            try (android.database.Cursor cursor = database.rawQuery(
+                    "SELECT message_id,nonce,ciphertext FROM messages WHERE conversation_id=? ORDER BY created_at DESC LIMIT ?",
+                    new String[]{conversationId, String.valueOf(limit)})) {
+                while (cursor.moveToNext()) {
+                    try {
+                        String messageId = cursor.getString(0);
+                        String alias = messageAlias(conversationId, messageId);
+                        if (!store.containsAlias(alias)) continue;
+                        SecretKey key = (SecretKey) store.getKey(alias, null);
+                        if (key == null) continue;
+                        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+                        cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(128, cursor.getBlob(1)));
+                        String plaintext = new String(cipher.doFinal(cursor.getBlob(2)), StandardCharsets.UTF_8);
+                        newestFirst.add(plaintext);
+                    } catch (Exception ignored) {
+                        // One deliberately erased or damaged record must not
+                        // prevent the remaining local history from opening.
+                    }
+                }
+            }
+            Collections.reverse(newestFirst);
+            for (String plaintext : newestFirst) result.put(plaintext);
+        } catch (Exception ignored) {
+            // A missing per-message key is an intentional cryptographic erase.
+            // Skip unreadable rows rather than making the whole chat unavailable.
+        }
+        return result.toString();
     }
 
     synchronized boolean clearConversation(String conversationId) {
