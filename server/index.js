@@ -6420,13 +6420,13 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const lastReadReceiptSeq = parseInt(d.lastReadReceiptSeq||0, 10);
     const lastReactionSeq = parseInt(d.lastReactionSeq||0, 10);
     const lastDeletionSeq = parseInt(d.lastDeletionSeq||0, 10);
-    // full=1 is only ever sent once, right after a reload, to rebuild the
-    // chat log from scratch (the client never persists message content
-    // locally — only the room session and a small expiry ledger). Normal
-    // incremental polling never sets this and keeps excluding the caller's
-    // own messages exactly as before, since the client already has those
-    // from its own optimistic send.
+    // full=1 is used only when this device has no local encrypted history
+    // window. Current clients request a bounded bootstrap (normally 50),
+    // then every reopen resumes through the ordinary sequence delta.
     const includeOwn = d.full === 1 || d.full === '1';
+    const bootstrapLimit = includeOwn
+      ? Math.max(1, Math.min(100, parseInt(d.bootstrapLimit, 10) || 50))
+      : 0;
     // Must rehydrate from PostgreSQL like every other conversation route
     // (ensureConversationLoaded), not a bare rooms.get() — the in-memory
     // cache starts EMPTY on every boot (rooms.clear() in bootstrap()), so a
@@ -6471,12 +6471,13 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     // letting includeOwn pull it back in on every reload just reintroduces
     // the exact self-echo ("X joined" shown to X) the from-tagging above
     // was added to prevent, since it bypassed that tag entirely.
-    const newMsgs = room.msgs.filter(msg => {
+    let newMsgs = room.msgs.filter(msg => {
       if (msg.seq <= clientLastSeq) return false;
       if (msg.deleted) return false; // deleted-for-everyone — nothing left to recover
       if (msg.type === 'system') return !messageFromToken(msg, token);
       return includeOwn || !messageFromToken(msg, token);
     });
+    if (includeOwn && newMsgs.length > bootstrapLimit) newMsgs = newMsgs.slice(-bootstrapLimit);
 
     // Mark delivered — only for messages where the CALLER is the recipient,
     // not the original sender. Without the msg.from check, a full=1

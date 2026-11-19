@@ -1,6 +1,6 @@
 'use strict';
 
-// "Load earlier messages": a conversation opens with its newest 200 messages; a
+// "Load earlier messages": a conversation opens with its newest 50 messages; a
 // button at the top adds older ones, first from this device's saved history and
 // then from the server's full history, without moving the reader.
 
@@ -22,8 +22,8 @@ test('the saved history can be read a page at a time, newest first, through a (c
   assert.match(client, /IDBKeyRange\.bound\(\[code, 0\], \[code, bounded \? beforeSeq : Number\.MAX_SAFE_INTEGER\], false, bounded\)/);
 });
 
-test('a chat opens with 200 messages and each page adds 200 from the device or 50 from the server', () => {
-  assert.match(client, /const HISTORY_LOAD_LIMIT = 200;/);
+test('a chat opens with 50 messages and each older page adds 200 from the device or 50 from the server', () => {
+  assert.match(client, /const HISTORY_LOAD_LIMIT = 50;/);
   assert.match(client, /const HISTORY_PAGE_SIZE = 200;/);
   assert.match(client, /const SERVER_HISTORY_PAGE_SIZE = 50;/);
   assert.match(client, /async function historyStoreLoad\(code\) \{\s*return \(await historyStoreLoadPage\(code\)\)\.messages;/);

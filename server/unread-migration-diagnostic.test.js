@@ -103,7 +103,7 @@ test('the diagnostic snapshot reports the PRE-heal unread value and whether self
   assert.match(section, /cutoffAt: room\.unreadMigrationCutoffAt, staleUnreadSelfHealed,/);
 });
 
-test('the full-history-restore migration path also logs its own before/after snapshot, tagged separately from the join path', () => {
+test('the history-restore migration path logs bootstrap and delta snapshots separately from the join path', () => {
   const fnStart = client.indexOf('async function restoreRoomHistory(room)');
   assert.notEqual(fnStart, -1);
   const fnEnd = client.indexOf('\nasync function ', fnStart + 1);
@@ -111,7 +111,7 @@ test('the full-history-restore migration path also logs its own before/after sna
   const idx = fn.indexOf("const restoreMigrationDiagBefore = room.unreadMigrationPending ? {");
   assert.notEqual(idx, -1);
   const section = fn.slice(idx);
-  assert.match(section, /event:'full_restore'/);
+  assert.match(section, /event:syncPlan\.mode === 'bootstrap' \? 'bootstrap_restore' : 'delta_restore'/);
   assert.match(section, /const restoreMigrationPersisted = persistRoomSeq\(room\);/);
   assert.match(section, /logUnreadMigrationDiagnostic\(room, \{\s*\n\s*\.\.\.restoreMigrationDiagBefore,/);
 });

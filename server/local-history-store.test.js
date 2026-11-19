@@ -26,8 +26,8 @@ function extract(source, name) {
 }
 
 const sandbox = vm.createContext({ Number, Set, Math, Array });
-vm.runInContext('const HISTORY_MAX_ENVELOPE_CHARS = 256 * 1024;', sandbox);
-for (const name of ['historyEnvelope', 'historyReconcilePlan']) vm.runInContext(extract(client, name), sandbox);
+vm.runInContext('const HISTORY_MAX_ENVELOPE_CHARS = 256 * 1024; const HISTORY_LOAD_LIMIT = 50;', sandbox);
+for (const name of ['historyEnvelope', 'historyReconcilePlan', 'historyRestoreSyncPlan']) vm.runInContext(extract(client, name), sandbox);
 // Values made in the sandbox belong to another realm; round-trip them to plain data.
 const run = expression => JSON.parse(vm.runInContext(`JSON.stringify(${expression})`, sandbox) ?? 'null');
 
@@ -94,6 +94,21 @@ test('a chat cleared for everyone removes everything sent up to that moment, and
   assert.deepEqual(plan({ local, serverMessages:[{ id:'d', seq:70 }], tombstoneIds:[], clearedAt:600 }), ['a', 'b', 'c']);
 });
 
+test('cached history resumes with a delta while a fresh device requests only a 50-message bootstrap', () => {
+  const room = { code:'room', token:'token', lastReceiptSeq:8, lastReadReceiptSeq:7, lastReactionSeq:6, lastDeletionSeq:5 };
+  const delta = run(`historyRestoreSyncPlan(${JSON.stringify(room)}, [{id:'a',seq:40},{id:'b',seq:44}])`);
+  assert.equal(delta.mode, 'delta');
+  assert.equal(delta.request.lastSeq, 44);
+  assert.equal(delta.request.lastReceiptSeq, 8);
+  assert.equal('full' in delta.request, false);
+
+  const bootstrap = run(`historyRestoreSyncPlan(${JSON.stringify(room)}, [])`);
+  assert.equal(bootstrap.mode, 'bootstrap');
+  assert.equal(bootstrap.request.lastSeq, 0);
+  assert.equal(bootstrap.request.full, 1);
+  assert.equal(bootstrap.request.bootstrapLimit, 50);
+});
+
 // ---- wiring ----------------------------------------------------------------
 
 test('every way a message or conversation is removed also removes the stored copy', () => {
@@ -108,17 +123,25 @@ test('every way a message or conversation is removed also removes the stored cop
 
 test('messages are saved as they arrive, are restored, and our own sends are kept', () => {
   assert.match(client, /historyStorePut\(room\.code, data\.messages\); \/\/ keep it on this device until it is deleted/);
-  assert.match(client, /historyStorePut\(room\.code, data\.messages\);\s*\n\s*reconcileLocalHistory\(room, localMessages, data\);/);
+  assert.match(client, /historyStorePut\(room\.code, data\.messages\);\s*\n\s*if \(syncPlan\.mode === 'bootstrap'\) reconcileLocalHistory\(room, localMessages, data\);/);
   assert.match(client, /if \(path === '\/api\/send' && res\.ok && body\?\.ok && data\?\.code\) historyStoreSent\(data, body, rooms\.get\(data\.code\)\);/);
 });
 
 test('opening a conversation paints from the device first and only then asks the server', () => {
   const restore = client.slice(client.indexOf('async function restoreRoomHistory(room) {'));
   assert.ok(restore.indexOf('await restoreLocalHistory(room)') < restore.indexOf("api('/api/poll'"), 'local before network');
+  assert.match(restore, /const syncPlan = historyRestoreSyncPlan\(room, localMessages\);\s*\n\s*const data = await api\('\/api\/poll', syncPlan\.request\);/);
   assert.match(restore, /if \(data\.error\) throw new Error\(data\.error\);\s*\n\s*const nowTs = Date\.now\(\);\s*\n\s*await repairRoomKeyFromAccountBackup\(room, data\.messages\);\s*\n\s*historyStorePut/);
   // the local pass cannot wait behind attachment downloads: restoring never downloads them
   assert.match(client, /await applyRestoredHistory\(room, stored, Date\.now\(\)\);/);
   assert.doesNotMatch(client, /restoreBatch\(attachmentMessages\)/);
+});
+
+test('a historic clear watermark removes only older cached messages and survives restart', () => {
+  assert.match(client, /for \(const message of localMessages\) \{\s*if \(!\(Number\(message\.ts\) > 0 && Number\(message\.ts\) <= cutoff\)\) continue;/);
+  assert.match(client, /lastKnownClearedAt:Math\.max\(0, Number\(room\.lastKnownClearedAt\) \|\| 0\)/);
+  assert.match(client, /existing\.lastKnownClearedAt = Math\.max\(0, Number\(room\.lastKnownClearedAt\) \|\| 0\);/);
+  assert.match(client, /lastKnownClearedAt:session\.lastKnownClearedAt/);
 });
 
 test('delivered and read ticks survive on the stored copy', () => {

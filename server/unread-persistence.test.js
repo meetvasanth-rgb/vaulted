@@ -38,7 +38,7 @@ test('successful full restore rebuilds unread counts from server read receipts',
   assert.match(client, /room\.unread = restoredUnread/);
   assert.match(client, /room\.unreadSystemCount = restoredUnreadSystemCount/);
   assert.match(client, /Number\(msg\.seq\) <= \(Number\(room\.lastReadSeq\) \|\| 0\)/);
-  assert.match(client, /if \(room\.unreadMigrationPending\)[\s\S]{0,1200}room\.unreadStateVersion = 2/);
+  assert.match(client, /if \(syncPlan\.mode === 'bootstrap' && room\.unreadMigrationPending\)[\s\S]{0,1200}room\.unreadStateVersion = 2/);
   assert.match(client, /legacyReadBaseline[\s\S]{0,400}new Date\(msg\.ts \|\| 0\)\.getTime\(\)[\s\S]{0,400}Number\(msg\.seq\)/);
   assert.match(client, /if \(unreadChanged\) persistRoomSeq\(room\)/);
 });
@@ -65,7 +65,7 @@ test('legacy unread state migrates during lightweight startup reconnects', () =>
 test('the fast synchronous hydration pass self-heals a stale unread counter before makeRoom(), not only in the slow network loop', () => {
   const idx = client.indexOf('const sessionLastSeq = Number(session.lastSeq) || 0;');
   assert.notEqual(idx, -1);
-  const section = client.slice(idx, idx + 2000);
+  const section = client.slice(idx, idx + 3000);
   assert.match(section, /const sessionLastReadSeq = session\.lastReadSeq === undefined \? sessionLastSeq : \(Number\(session\.lastReadSeq\) \|\| 0\);/);
   assert.match(section, /const sessionUnreadStale = sessionLastReadSeq >= sessionLastSeq && \(\(Number\(session\.unread\) \|\| 0\) > 0 \|\| \(Number\(session\.unreadSystemCount\) \|\| 0\) > 0\);/);
   assert.match(section, /const healedUnread = sessionUnreadStale \? 0 : session\.unread;/);

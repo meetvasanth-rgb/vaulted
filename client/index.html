@@ -5761,7 +5761,7 @@ function secureNativeClearConversation(conversationId) {
 // are stored only as their small reference; their bytes are not cached yet.
 const HISTORY_DB_NAME = 'vaultlix-history';
 const HISTORY_MAX_ENVELOPE_CHARS = 256 * 1024;
-const HISTORY_LOAD_LIMIT = 200;  // shown when a chat opens
+const HISTORY_LOAD_LIMIT = 50;   // newest cached messages shown immediately when a chat opens
 const HISTORY_PAGE_SIZE = 200;   // added by each "Load earlier messages" from this device
 const SERVER_HISTORY_PAGE_SIZE = 50; // ... and from the server once the device has nothing older
 let historyDbPromise = null;
@@ -5824,6 +5824,29 @@ function historyReconcilePlan({ local, serverMessages, tombstoneIds, clearedAt }
     if (windowStart !== null && Number(item.seq) >= windowStart && !returned.has(item.id)) remove.add(item.id);
   }
   return remove;
+}
+
+// A room with a local ciphertext window resumes from that window's newest
+// sequence. Only a device with no cached history asks for a bounded bootstrap
+// that includes this device's own sends. This keeps normal reopen traffic a
+// small delta instead of downloading the retained conversation again.
+function historyRestoreSyncPlan(room, localMessages) {
+  const localLastSeq = (localMessages || []).reduce((highest, message) =>
+    Math.max(highest, Number(message?.seq) || 0), 0);
+  const hasLocalWindow = localLastSeq > 0;
+  return {
+    mode:hasLocalWindow ? 'delta' : 'bootstrap',
+    request:{
+      code:room.code,
+      token:room.token,
+      lastSeq:hasLocalWindow ? localLastSeq : 0,
+      lastReceiptSeq:hasLocalWindow ? (Number(room.lastReceiptSeq) || 0) : 0,
+      lastReadReceiptSeq:hasLocalWindow ? (Number(room.lastReadReceiptSeq) || 0) : 0,
+      lastReactionSeq:hasLocalWindow ? (Number(room.lastReactionSeq) || 0) : 0,
+      lastDeletionSeq:hasLocalWindow ? (Number(room.lastDeletionSeq) || 0) : 0,
+      ...(hasLocalWindow ? {} : { full:1, bootstrapLimit:HISTORY_LOAD_LIMIT }),
+    },
+  };
 }
 
 function historyTransaction(mode, work) {
@@ -6835,7 +6858,7 @@ function scheduleAccountSync() {
   accountSyncTimer = setTimeout(() => syncAnonymousAccount(false), 1200);
 }
 
-function makeRoom({ code, token, myName, peerName, peerNameEncrypted, peerNameFromAccountProfile, everOnline, peerProfileImage, peerPrivateNumber, lastKnownPeerPubKey, reconnectRequired, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, inboxActivityAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle, ownerAccountId, callHistoryClearedAt, unread, unreadSystemCount, lastReadSeq, unreadStateVersion, unreadMigrationCutoffAt }) {
+function makeRoom({ code, token, myName, peerName, peerNameEncrypted, peerNameFromAccountProfile, everOnline, peerProfileImage, peerPrivateNumber, lastKnownPeerPubKey, reconnectRequired, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, inboxActivityAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle, ownerAccountId, callHistoryClearedAt, lastKnownClearedAt, unread, unreadSystemCount, lastReadSeq, unreadStateVersion, unreadMigrationCutoffAt }) {
   return {
     code, token, myName,
     // Omitted means this room is being created now and belongs to the
@@ -6988,11 +7011,10 @@ function makeRoom({ code, token, myName, peerName, peerNameEncrypted, peerNameFr
     // clearedAt value from the server, so a poll only wipes this session's
     // in-memory history once per actual clear, not on every subsequent
     // poll response that still carries the same timestamp. Deliberately
-    // NOT persisted across reload: a fresh page load rebuilds `messages`
-    // from scratch via restoreRoomHistory's full=1 bootstrap, which by
-    // then already reflects the clear (nothing left server-side to
-    // resurrect), so there's nothing stale here for a reset-to-0 to miss.
-    lastKnownClearedAt: 0,
+    // NOT persisted across reload: restoreRoomHistory checks the server's
+    // clear watermark before merging a delta into the encrypted local
+    // window, so there is nothing stale for a reset-to-0 to miss.
+    lastKnownClearedAt: Math.max(0, Number(lastKnownClearedAt) || 0),
     // The peer public key is public material, but it is also the only input
     // needed alongside this device's private key to reconstruct the E2EE
     // shared key after a restart. Keep the last verified value locally so a
@@ -7592,6 +7614,7 @@ async function persistRoom(room) {
       nativeRoomHandle: room.nativeRoomHandle,
       ownerAccountId: room.ownerAccountId || null,
       lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReadReceiptSeq: room.lastReadReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq,
+      lastKnownClearedAt:Math.max(0, Number(room.lastKnownClearedAt) || 0),
       callHistoryClearedAt:Number(room.callHistoryClearedAt) || 0,
       unread:Math.max(0, Number(room.unread) || 0),
       unreadSystemCount:Math.max(0, Number(room.unreadSystemCount) || 0),
@@ -7634,6 +7657,7 @@ function persistRoomSeq(room) {
     existing.lastReadReceiptSeq = room.lastReadReceiptSeq;
     existing.lastReactionSeq = room.lastReactionSeq;
     existing.lastDeletionSeq = room.lastDeletionSeq;
+    existing.lastKnownClearedAt = Math.max(0, Number(room.lastKnownClearedAt) || 0);
     existing.unread = Math.max(0, Number(room.unread) || 0);
     existing.unreadSystemCount = Math.max(0, Number(room.unreadSystemCount) || 0);
     existing.lastReadSeq = Math.max(0, Number(room.lastReadSeq) || 0);
@@ -24627,17 +24651,11 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
 }
 
 // ── REBUILD CHAT LOG AFTER A RELOAD ─────────────────────────────────────
-// room.messages is never persisted — only the room session (keys, seq
-// positions) and the small delete ledger (msgId -> deleteAt) are. So right
-// after rejoining, do one bootstrap fetch of everything the server still
-// has (it caps history at 100 messages per room) — including this device's
-// own past sends, which normal incremental polling always excludes since a
-// live session already has those in memory. Each message gets re-decrypted
-// fresh from the server's ciphertext, exactly like a message arriving for
-// the first time — nothing decrypted was ever sitting in storage. The
-// delete ledger is what stops an already-expired message from resurrecting
-// while still letting anything that's still genuinely live come back and
-// resume its countdown from wherever it actually was.
+// The latest encrypted envelopes are persisted locally (never plaintext).
+// They paint first, then a cursor-based server delta catches up changes made
+// while the app was closed. A bounded server bootstrap is needed only on a
+// device that has no local window yet. The delete ledger stops an expired
+// message from resurrecting while still letting live messages resume.
 // Turns server-format messages (from the network or from the local copy) into
 // this conversation's records: text first, then attachments as placeholders that
 // fill in as each encrypted object arrives.
@@ -24917,14 +24935,31 @@ async function restoreRoomHistory(room) {
   // 1. Paint what this device already has, without waiting for the network.
   const localMessages = await restoreLocalHistory(room);
   try {
-    // 2. Ask the server what is current and bring the chat up to date.
-    const data = await api('/api/poll', { code: room.code, token: room.token, lastSeq: 0, lastReceiptSeq: 0, lastReadReceiptSeq: 0, lastReactionSeq: 0, lastDeletionSeq: 0, full: 1 });
+    // 2. Resume after the newest locally cached envelope. A fresh device asks
+    // for only the newest bounded window, including its own previous sends.
+    const syncPlan = historyRestoreSyncPlan(room, localMessages);
+    const data = await api('/api/poll', syncPlan.request);
     if (!data || data.roomGone) return;
     if (data.error) throw new Error(data.error);
     const nowTs = Date.now();
     await repairRoomKeyFromAccountBackup(room, data.messages);
     historyStorePut(room.code, data.messages);
-    reconcileLocalHistory(room, localMessages, data);
+    if (syncPlan.mode === 'bootstrap') reconcileLocalHistory(room, localMessages, data);
+
+    // A peer may have cleared the conversation while this device was
+    // offline. Apply that tombstone before merging the delta.
+    if (syncPlan.mode === 'delta' && data.clearedAt && data.clearedAt > (room.lastKnownClearedAt || 0)) {
+      // Older builds did not persist this watermark. Remove only envelopes
+      // at or before the clear time so messages sent afterward survive the
+      // first launch on the upgraded cache format.
+      const cutoff = Number(data.clearedAt) || 0;
+      for (const message of localMessages) {
+        if (!(Number(message.ts) > 0 && Number(message.ts) <= cutoff)) continue;
+        if (room.messages.some(record => record.id === message.id)) removeMessageRecord(room, message.id);
+        else void historyStoreDelete(room.code, message.id);
+      }
+      if (isRoomVisible(room)) renderChatBody(room);
+    }
 
     if (data.messages && data.messages.length > 0) await applyRestoredHistory(room, data.messages, nowTs);
     // TEMPORARY DIAGNOSTIC — see logUnreadMigrationDiagnostic's own comment.
@@ -24934,11 +24969,11 @@ async function restoreRoomHistory(room) {
     // the app fully settled, so logging here separately from the join path
     // helps tell which of the two actually ran for a given room.
     const restoreMigrationDiagBefore = room.unreadMigrationPending ? {
-      event:'full_restore', storedVersion: room.unreadStateVersion, pending: room.unreadMigrationPending,
+      event:syncPlan.mode === 'bootstrap' ? 'bootstrap_restore' : 'delta_restore', storedVersion: room.unreadStateVersion, pending: room.unreadMigrationPending,
       storedUnread: room.unread, storedLastSeq: room.lastSeq, storedLastReadSeq: room.lastReadSeq,
       cutoffAt: room.unreadMigrationCutoffAt, messagesInRestore: (data.messages || []).length,
     } : null;
-    if (room.unreadMigrationPending) {
+    if (syncPlan.mode === 'bootstrap' && room.unreadMigrationPending) {
       // Pre-v2 builds persisted a counter but no trustworthy read sequence;
       // some older rooms therefore rebuilt every historic unreadAt-null
       // record as new. Only a successful authoritative restore may establish
@@ -24954,7 +24989,7 @@ async function restoreRoomHistory(room) {
       room.unreadStateVersion = 2;
       room.unreadMigrationPending = false;
     }
-    if (Array.isArray(data.messages)) {
+    if (syncPlan.mode === 'bootstrap' && Array.isArray(data.messages)) {
       let restoredUnread = 0;
       let restoredUnreadSystemCount = 0;
       for (const msg of data.messages) {
@@ -24982,12 +25017,17 @@ async function restoreRoomHistory(room) {
         if (u.reactionSeq && u.reactionSeq > room.lastReactionSeq) room.lastReactionSeq = u.reactionSeq;
       }
     }
-    // Nothing to remove locally here — a deleted-for-everyone message was
-    // already excluded from data.messages above by the server. This just
-    // fast-forwards the counter so the very next incremental poll doesn't
-    // re-fetch and re-process the same already-known deletions forever.
+    // Delta tombstones remove cached ciphertext as well as the visible row.
+    // Bootstrap messages already exclude deleted records, and reconciliation
+    // above handles the authoritative initial window.
     if (data.deletions && data.deletions.length > 0) {
       for (const del of data.deletions) {
+        if (syncPlan.mode === 'delta') {
+          // removeMessageRecord also erases both device caches. If the row
+          // has not been decrypted into memory, erase the envelope directly.
+          if (room.messages.some(record => record.id === del.msgId)) removeMessageRecord(room, del.msgId);
+          else void historyStoreDelete(room.code, del.msgId);
+        }
         if (del.deletionSeq > room.lastDeletionSeq) room.lastDeletionSeq = del.deletionSeq;
       }
     }
@@ -24996,7 +25036,7 @@ async function restoreRoomHistory(room) {
     // nothing to actively wipe here, only a watermark to set so the very
     // next regular doPoll doesn't mistake this same clearedAt value for a
     // brand-new clear and wipe the history this call just correctly built.
-    room.lastKnownClearedAt = data.clearedAt || 0;
+    room.lastKnownClearedAt = Math.max(Number(room.lastKnownClearedAt) || 0, Number(data.clearedAt) || 0);
     // Sending remains available while history restores. Merge any newly
     // created records with restored history in chronological order before
     // the chat is repainted.
@@ -27142,9 +27182,8 @@ async function handleClearChat() {
 
 // Wipes this room's own local message state — called both right after we
 // trigger a clear ourselves (optimistic) and from doPoll when the peer
-// triggers one instead. Only in-memory/DOM state; nothing here needs to
-// touch localStorage, since message content was never persisted there in
-// the first place (see restoreRoomHistory's full=1 bootstrap-on-reload).
+// triggers one instead. The cache calls below cryptographically erase both
+// the encrypted browser envelopes and the native derived-message cache.
 function clearRoomChatLocally(room) {
   cancelAndScrubConversationCache(room);
   secureNativeClearConversation(room.code);
@@ -28092,7 +28131,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       const sessionUnreadStale = sessionLastReadSeq >= sessionLastSeq && ((Number(session.unread) || 0) > 0 || (Number(session.unreadSystemCount) || 0) > 0);
       const healedUnread = sessionUnreadStale ? 0 : session.unread;
       const healedUnreadSystemCount = sessionUnreadStale ? 0 : session.unreadSystemCount;
-      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, peerNameEncrypted:session.peerNameEncrypted, peerNameFromAccountProfile:session.peerNameFromAccountProfile, everOnline:session.everOnline, peerProfileImage:session.peerProfileImage, peerPrivateNumber:session.peerPrivateNumber, lastKnownPeerPubKey:session.lastKnownPeerPubKey, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, inboxActivityAt:session.inboxActivityAt || session.lastMessageAt || session.connectedSince || 0, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId, callHistoryClearedAt:session.callHistoryClearedAt, unread:healedUnread, unreadSystemCount:healedUnreadSystemCount, lastReadSeq:session.lastReadSeq === undefined ? session.lastSeq : session.lastReadSeq, unreadStateVersion:session.unreadStateVersion || 0, unreadMigrationCutoffAt:session.unreadMigrationCutoffAt || session.savedAt });
+      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, peerNameEncrypted:session.peerNameEncrypted, peerNameFromAccountProfile:session.peerNameFromAccountProfile, everOnline:session.everOnline, peerProfileImage:session.peerProfileImage, peerPrivateNumber:session.peerPrivateNumber, lastKnownPeerPubKey:session.lastKnownPeerPubKey, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, inboxActivityAt:session.inboxActivityAt || session.lastMessageAt || session.connectedSince || 0, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId, callHistoryClearedAt:session.callHistoryClearedAt, lastKnownClearedAt:session.lastKnownClearedAt, unread:healedUnread, unreadSystemCount:healedUnreadSystemCount, lastReadSeq:session.lastReadSeq === undefined ? session.lastSeq : session.lastReadSeq, unreadStateVersion:session.unreadStateVersion || 0, unreadMigrationCutoffAt:session.unreadMigrationCutoffAt || session.savedAt });
       if (sessionUnreadStale) persistHealedUnread(session.code);
       room.backgroundInboxSyncedAt = Math.max(0, Number(session.backgroundInboxSyncedAt) || 0);
       room.nickname = session.nickname || null;
@@ -28191,11 +28230,9 @@ window.addEventListener('DOMContentLoaded', async () => {
       room.unreadSystemCount = 0;
       persistRoomSeq(room);
     }
-    // The delete ledger is the one thing that survives a reload for message
-    // history purposes — msgId -> deleteAt only, never content. Everything
-    // else about the chat log itself gets rebuilt fresh below by re-fetching
-    // and re-decrypting from the server, same as it would on any other
-    // device joining this room for the first time.
+    // The delete ledger survives alongside the encrypted local history
+    // window. It is loaded before any cached envelope is decrypted so a
+    // locally deleted or expired message cannot briefly reappear.
     room.deleteLedger = new Map(Object.entries(session.deleteLedger || {}).map(([k, v]) => [k, Number(v)]));
     purgeExpiredDeleteLedgerCopies(room);
     try {
