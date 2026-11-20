@@ -173,6 +173,7 @@ test('wiring: uploads are kept, deletes and leaving clean up, Storage names grou
 
 test('group photos restore an encrypted compact preview before the original hydrates', () => {
   assert.match(groups, /function queuePrivateGroupNativePreview\(group, message\)[\s\S]*makeTinyThumbnail[\s\S]*secureNativeStoreCompactMessage/);
+  assert.match(groups, /secureNativeStoreCompactMessage[\s\S]*120, 0\.48/);
   assert.match(groups, /async function restorePrivateGroupNativePreviews\(group\)[\s\S]*secureNativeLoadMessages[\s\S]*attachmentState:'native-preview'/);
   assert.match(groups, /await restorePrivateGroupNativePreviews\(group\)/);
   assert.match(groups, /\.group-msg \.attachment-loading, \.group-msg \.native-media-preview/);

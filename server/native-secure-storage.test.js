@@ -56,6 +56,9 @@ test('image thumbnails survive cold launch only inside encrypted native history'
   assert.match(client, /queueSecureNativeMediaPreview[\s\S]*makeTinyThumbnail[\s\S]*320/);
   assert.match(client, /\.msg \.attachment-loading, \.msg \.native-media-preview/);
   assert.match(client, /hasEncryptedNativePreview && restored\.kind === 'attachment-unavailable'/);
+  assert.match(client, /deferAttachmentRender:isNativeApp\(\)/);
+  assert.match(client, /attachmentMessages\.length && isRoomVisible\(room\) && !deferAttachmentRender/);
+  assert.match(client, /nativeRecords = await restoreSecureNativeHistory\(room\);[\s\S]{0,500}renderChatBody\(room\)/);
 });
 
 test('disappearing messages never enter the native plaintext-derived cache', () => {

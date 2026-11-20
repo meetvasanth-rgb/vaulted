@@ -24837,7 +24837,7 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
 // Turns server-format messages (from the network or from the local copy) into
 // this conversation's records: text first, then attachments as placeholders that
 // fill in as each encrypted object arrives.
-async function applyRestoredHistory(room, messages, nowTs, { confirmReads = true } = {}) {
+async function applyRestoredHistory(room, messages, nowTs, { confirmReads = true, deferAttachmentRender = false } = {}) {
   const unseen = [];
   for (const msg of messages) {
     // How far back this conversation has been loaded, so "Load earlier messages" knows where to continue.
@@ -24962,7 +24962,11 @@ async function applyRestoredHistory(room, messages, nowTs, { confirmReads = true
     }
   }
   room.messages.sort((left, right) => (Number(left?.ts) || 0) - (Number(right?.ts) || 0));
-  if (attachmentMessages.length && isRoomVisible(room)) renderChatBody(room);
+  // During a native cold restore, SQLCipher thumbnails are read immediately
+  // after this IndexedDB envelope pass. Do not paint the temporary encrypted
+  // attachment cards in between those two local reads: on Android that made a
+  // cached photo visibly flash "Opening encrypted image…" for one frame.
+  if (attachmentMessages.length && isRoomVisible(room) && !deferAttachmentRender) renderChatBody(room);
 }
 
 // Delivered / read ticks that arrive with our own older messages.
@@ -24979,7 +24983,7 @@ async function restoreLocalHistory(room) {
   try {
     stored = await historyStoreLoad(room.code);
     if (stored.length && room.sharedKey) {
-      await applyRestoredHistory(room, stored, Date.now());
+      await applyRestoredHistory(room, stored, Date.now(), { deferAttachmentRender:isNativeApp() });
       room.localHistoryRestored = true;
       // Bring back the delivered / read ticks saved with our own messages.
       restoreOwnTicks(room, stored);
@@ -24988,6 +24992,11 @@ async function restoreLocalHistory(room) {
     // The native SQLCipher cache survives that cold start, is decrypted only
     // after device unlock, and lets the conversation paint before networking.
     nativeRecords = await restoreSecureNativeHistory(room);
+    // The native path held back attachment placeholders above. Paint once,
+    // after secure previews have had a chance to replace them. A genuinely
+    // uncached legacy attachment still shows its loading card and seeds its
+    // preview after it opens.
+    if (isNativeApp() && stored.length && isRoomVisible(room)) renderChatBody(room);
   } catch (error) {
     console.warn('Local history could not be restored', error?.message);
   }

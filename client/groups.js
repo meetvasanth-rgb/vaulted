@@ -271,11 +271,24 @@ function queuePrivateGroupNativePreview(group, message) {
       attachment = { ...message.attachment, items:items.filter(Boolean), previewOnly:true };
       if (!attachment.items.length) return;
     }
-    secureNativeStoreCompactMessage(privateGroupCacheCode(group.id), message.id, {
+    const nativeRecord = {
       id:message.id, kind:'group-media-preview', createdAt:message.createdAt,
       senderId:message.senderId, attachmentId:message.attachmentId,
       attachment, nativeMediaPreview:true,
-    });
+    };
+    if (secureNativeStoreCompactMessage(privateGroupCacheCode(group.id), message.id, nativeRecord)) return;
+    // Larger albums can still cross the synchronous native-bridge ceiling
+    // after the normal preview pass. Retry with smaller tiles instead of
+    // silently leaving that album uncached forever.
+    if (message.attachment.type === 'group-album') {
+      const items = await Promise.all((attachment.items || []).map(async item => {
+        const data = await makeTinyThumbnail(item.data, item.mime, 120, 0.48);
+        return data ? { ...item, data, mime:'image/jpeg', previewOnly:true } : null;
+      }));
+      if (items.some(Boolean)) secureNativeStoreCompactMessage(privateGroupCacheCode(group.id), message.id, {
+        ...nativeRecord, attachment:{ ...attachment, items:items.filter(Boolean) },
+      });
+    }
   }).catch(() => {}).finally(() => privateGroupNativePreviewJobs.delete(key));
 }
 
