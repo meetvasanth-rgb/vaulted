@@ -3388,6 +3388,15 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 :root:not(#vaultlix-font-override-a):not(#vaultlix-font-override-b) body *,
 :root:not(#vaultlix-font-override-a):not(#vaultlix-font-override-b) body *::before,
 :root:not(#vaultlix-font-override-a):not(#vaultlix-font-override-b) body *::after{font-family:var(--vaultlix-system-font)!important}
+/* iOS conversations and contacts use native SF Pro with standard weights. */
+html.vaultlix-native-ios #s-chat .msg .bubble:not(.emoji-jumbo){font-weight:400!important;line-height:1.4!important;letter-spacing:normal!important}
+html.vaultlix-native-ios #s-chat .chat-hdr-room{font-weight:600!important;letter-spacing:normal!important}
+html.vaultlix-native-ios .vault-list-row-name{font-weight:600!important;letter-spacing:normal}
+html.vaultlix-native-ios .contact-text strong{font-weight:400;letter-spacing:normal}
+html.vaultlix-native-ios .vault-list-row-preview,
+html.vaultlix-native-ios .vault-list-row-time,
+html.vaultlix-native-ios #s-chat .msg-time,
+html.vaultlix-native-ios #msg-input{font-weight:400!important;letter-spacing:normal}
 </style>
 <script type="application/ld+json">
 {
