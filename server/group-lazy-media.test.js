@@ -133,6 +133,21 @@ test('the queue runs two at a time, newest waiting first, and never queues a mes
   assert.deepEqual([...order].sort(), ['m1', 'm2', 'm3', 'm4', 'm5'], 'each message loaded exactly once');
 });
 
+test('a visible group attachment moves ahead of queued background work', async () => {
+  const order = [], releases = [];
+  const {sandbox} = load({decode:message => new Promise(resolve => {
+    order.push(message.id); releases.push(() => resolve({...message,attachment:{type:'group-image',data:'QQ=='}}));
+  })});
+  sandbox.privateGroups.set('g1',{id:'g1',messages:['one','two','visible','nearby'].map(id => placeholder(id))});
+  for(const id of ['one','two','visible','nearby']) sandbox.queuePrivateGroupAttachmentLoad('g1',id,0);
+  sandbox.queuePrivateGroupAttachmentLoad('g1','visible',2);
+  releases[0](); await tick();
+  assert.deepEqual(order,['one','two','visible']);
+  releases[1](); await tick();
+  releases[2](); await tick();
+  releases[3](); await tick();
+});
+
 test('coming back online retries transient failures up to three times, then stops', () => {
   const { sandbox } = load();
   const group = { id:'g1', messages:[
@@ -153,7 +168,7 @@ test('wiring: the render makes placeholders, wires retry, and schedules loads as
   assert.match(groups, /content = attachmentUnavailableHtml\(\{ unavailableReason:message\.unavailableReason \}\); usable = false;/);
   assert.match(extract('renderPrivateGroupMessages'), /wirePrivateGroupAttachmentRetry\(row, group\)/);
   assert.match(extract('renderPrivateGroupMessages'), /schedulePrivateGroupAttachmentLoads\(body, group\);\s*\}$/);
-  assert.match(extract('schedulePrivateGroupAttachmentLoads'), /rootMargin:'400px 0px'/);
+  assert.match(extract('schedulePrivateGroupAttachmentLoads'), /rootMargin:'0px'/);
   assert.match(extract('openPrivateGroup', 'async function'), /retryTransientPrivateGroupAttachments\(group\)/);
   assert.match(extract('groupMessagePreview'), /case 'attachment': return 'Attachment'/);
   // Nothing downloads while decoding a batch of messages.

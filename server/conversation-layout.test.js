@@ -31,6 +31,23 @@ test('bottom-pinned readers remain at the newest messages', () => {
   ctx.restoreConversationViewport(body,'room');
   assert.equal(body.scrollTop,3000);
 });
+test('a fresh chat open overrides an older saved reading position', () => {
+  const {ctx} = context();
+  ctx.restoreConversationLayout('room',{kind:'conversation-layout',scroll:{bottom:false,id:'old',offset:20},media:{}});
+  const body={dataset:{},clientHeight:500,scrollHeight:4000,scrollTop:200};
+  ctx.beginLatestConversationOpen(body,'room');
+  ctx.restoreConversationViewport(body,'room');
+  assert.equal(body.scrollTop,4000);
+  assert.equal(body.dataset.followLatest,'1');
+});
+test('out-of-order restored direct messages are displayed in timestamp order', () => {
+  const ctx=vm.createContext({Set,Number,isVisibleConversationRecord:()=>true});
+  vm.runInContext(source.slice(source.indexOf('function uniqueVisibleConversationRecords('),source.indexOf('function vaultLastActivity(')),ctx);
+  const records=[{id:'new',kind:'text',ts:300},{id:'old',kind:'text',ts:100},{id:'middle',kind:'text',ts:200}];
+  const rendered=ctx.uniqueVisibleConversationRecords(records);
+  assert.deepEqual(Array.from(rendered,record=>record.id),['old','middle','new']);
+  assert.equal(records[0].id,'new');
+});
 test('native saved layout merges into an early empty layout without losing dimensions', () => {
   const {ctx} = context();
   ctx.conversationLayout('room');

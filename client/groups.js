@@ -692,6 +692,10 @@ function scrollPrivateGroupToLatest() {
 
 async function openPrivateGroup(id) {
   const group = privateGroups.get(id); if (!group) return;
+  stopViewportMedia(document.getElementById('chat-body'));
+  const body = document.getElementById('group-chat-body');
+  beginLatestConversationOpen(body, privateGroupCacheCode(id));
+  if (body) body.dataset.layoutCode = '';
   const requestId = ++privateGroupOpenRequestId;
   openingPrivateGroupId = group.historyHydrated ? null : id;
   renderVaultList();
@@ -735,6 +739,8 @@ async function openPrivateGroup(id) {
 }
 
 function closePrivateGroup() {
+  stopViewportMedia(document.getElementById('group-chat-body'));
+  privateGroupLoadObserver?.disconnect();
   captureConversationViewport(document.getElementById('group-chat-body'), privateGroupCacheCode(activePrivateGroupId));
   privateGroupOpenRequestId++;
   openingPrivateGroupId = null;
@@ -821,7 +827,8 @@ function derivePrivateGroupView(messages, hiddenIds = []) {
       else reactions.get(control.target).delete(message.senderId);
     }
   }
-  return { visible:messages.filter(message => !message.control && !deleted.has(message.id)), reactions };
+  return { visible:messages.filter(message => !message.control && !deleted.has(message.id))
+    .sort((left, right) => (Number(left.createdAt) || 0) - (Number(right.createdAt) || 0)), reactions };
 }
 
 function applyPrivateGroupEdits(group) {
@@ -1614,17 +1621,24 @@ const privateGroupLoadKeys = new Set();
 let privateGroupLoadsRunning = 0;
 let privateGroupLoadObserver = null;
 
-function queuePrivateGroupAttachmentLoad(groupId, messageId) {
+function queuePrivateGroupAttachmentLoad(groupId, messageId, priority = 0) {
   const key = `${groupId}:${messageId}`;
-  if (privateGroupLoadKeys.has(key)) return;
+  if (privateGroupLoadKeys.has(key)) {
+    const waiting = privateGroupLoadQueue.find(job => job.key === key);
+    if (waiting) waiting.priority = Math.max(waiting.priority || 0, priority);
+    return;
+  }
   privateGroupLoadKeys.add(key);
-  privateGroupLoadQueue.push({ groupId, messageId, key });
+  privateGroupLoadQueue.push({ groupId, messageId, key, priority });
   pumpPrivateGroupAttachmentLoads();
 }
 
 function pumpPrivateGroupAttachmentLoads() {
   while (privateGroupLoadsRunning < ATTACHMENT_LOAD_CONCURRENCY && privateGroupLoadQueue.length) {
-    const job = privateGroupLoadQueue.pop(); // newest first: what the reader is looking at
+    let index = privateGroupLoadQueue.length - 1;
+    for (let i = index - 1; i >= 0; i--)
+      if ((privateGroupLoadQueue[i].priority || 0) > (privateGroupLoadQueue[index].priority || 0)) index = i;
+    const job = privateGroupLoadQueue.splice(index, 1)[0];
     privateGroupLoadsRunning++;
     loadPrivateGroupAttachment(job.groupId, job.messageId).catch(() => {}).finally(() => {
       privateGroupLoadsRunning--;
@@ -1709,19 +1723,25 @@ function wirePrivateGroupAttachmentRetry(row, group) {
 function schedulePrivateGroupAttachmentLoads(body, group) {
   if (privateGroupLoadObserver) privateGroupLoadObserver.disconnect();
   const placeholders = [...body.querySelectorAll('.group-msg .attachment-loading, .group-msg .native-media-preview')];
-  if (!placeholders.length) return;
-  const request = node => {
+  const request = (node, priority = 2) => {
     const id = node.closest('.group-msg')?.dataset.groupMsgId;
-    if (id) queuePrivateGroupAttachmentLoad(group.id, id);
+    if (id) queuePrivateGroupAttachmentLoad(group.id, id, priority);
   };
-  if (!('IntersectionObserver' in window)) { placeholders.slice(-6).forEach(request); return; }
+  scheduleViewportMedia(body, { selector:'.group-msg .attachment-loading, .group-msg .native-media-preview',
+    active:() => group.id === activePrivateGroupId && document.getElementById('group-chat')?.classList.contains('open'), request,
+    cancelPending:() => {
+      for (let i = privateGroupLoadQueue.length - 1; i >= 0; i--) if (privateGroupLoadQueue[i].groupId === group.id) {
+        privateGroupLoadKeys.delete(privateGroupLoadQueue[i].key); privateGroupLoadQueue.splice(i, 1);
+      }
+    } });
+  if (!placeholders.length || !('IntersectionObserver' in window)) return;
   privateGroupLoadObserver = new IntersectionObserver(entries => {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
       privateGroupLoadObserver.unobserve(entry.target);
-      request(entry.target);
+      request(entry.target, 2);
     }
-  }, { root:body, rootMargin:'400px 0px' });
+  }, { root:body, rootMargin:'0px' });
   placeholders.forEach(node => privateGroupLoadObserver.observe(node));
 }
 
@@ -1808,12 +1828,19 @@ function schedulePrivateGroupPreviewBackfill(group) {
     const decoded = await decodePrivateGroupBatch(group, state, page.messages);
     const native = await secureNativeLoadMessages(privateGroupCacheCode(group.id), HISTORY_LOAD_LIMIT);
     const previews = new Set(native.map(value => { try { return (typeof value === 'string' ? JSON.parse(value) : value)?.id; } catch (_) { return null; } }));
+    const newestMedia = [...decoded].reverse().find(message => message.attachmentId);
     for (const message of decoded.reverse()) {
       if (!message.attachmentId || previews.has(message.id)) continue;
       enqueueMediaPreviewBackfill(`group:${group.id}:${message.id}`, async () => {
         if (!hasPrivateGroupKeys(group) || (group.hiddenIds || []).includes(message.id)
             || !nativeMessageCacheEligible(group, message)) return;
-        const ciphertext = await attachmentCacheGet(privateGroupCacheCode(group.id), message.attachmentId);
+        let ciphertext = await attachmentCacheGet(privateGroupCacheCode(group.id), message.attachmentId);
+        if (!ciphertext && message.id === newestMedia?.id && Number(message.createdAt) > Date.now() - 2 * 86400000) {
+          ciphertext = await downloadRecentMediaWhileIdle('/api/groups/attachment/content', {
+            accountId:state.accountId,sessionToken:state.sessionToken,groupId:group.id,attachmentId:message.attachmentId});
+          if (loadAccountState()?.accountId !== state.accountId || privateGroups.get(group.id) !== group || (group.hiddenIds || []).includes(message.id)) return;
+          if (ciphertext) await attachmentCachePut(privateGroupCacheCode(group.id),message.attachmentId,message.id,ciphertext);
+        }
         if (!ciphertext) return;
         const next = await decodePrivateGroupAttachment(group, state, message, message.attachmentId, { localCiphertext:ciphertext });
         if ((group.hiddenIds || []).includes(message.id)) return;

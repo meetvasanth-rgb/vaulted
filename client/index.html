@@ -11777,6 +11777,8 @@ function showScreen(id) {
   closeConversationAchievements();
   const leavingChat = id !== 's-chat' && document.getElementById('s-chat')?.classList.contains('active');
   if (leavingChat) {
+    stopViewportMedia(document.getElementById('chat-body'));
+    attachmentLoadObserver?.disconnect();
     captureConversationViewport(document.getElementById('chat-body'), activeRoomCode);
     // Finish the old keyboard session before hiding the conversation. Leaving
     // a focused textarea inside display:none makes WKWebView dismiss it late;
@@ -20175,7 +20177,8 @@ function uniqueVisibleConversationRecords(records) {
     }
     visible.push(rec);
   }
-  return visible;
+  return visible.sort((left, right) => (Number(left.ts) || 0) - (Number(right.ts) || 0)
+    || (Number(left.serverSeq) || 0) - (Number(right.serverSeq) || 0));
 }
 
 function vaultLastActivity(room) {
@@ -21806,6 +21809,11 @@ function setActiveRoom(code, { deferMessages = false } = {}) {
   const room = rooms.get(code);
   if (!room) return;
   if (isChatConcealed(code)) return; // a hidden chat only opens once unlocked
+  // Each fresh open starts at the newest message. Anchors still preserve
+  // the reader's place during updates within an already-open conversation.
+  const body = document.getElementById('chat-body');
+  beginLatestConversationOpen(body, code);
+  if (body) body.dataset.renderedRoom = '';
   // Switching which room is on screen (room-tabs tap) doesn't always go
   // through showScreen() — already on s-chat, just picking a different tab,
   // is the common case — so this needs its own closeQrPanel() call too;
@@ -22118,17 +22126,24 @@ const attachmentLoadKeys = new Set();
 let attachmentLoadsRunning = 0;
 let attachmentLoadObserver = null;
 
-function queueAttachmentLoad(room, msgId) {
+function queueAttachmentLoad(room, msgId, priority = 0) {
   const key = `${room.code}:${msgId}`;
-  if (attachmentLoadKeys.has(key)) return;
+  if (attachmentLoadKeys.has(key)) {
+    const waiting = attachmentLoadQueue.find(job => job.key === key);
+    if (waiting) waiting.priority = Math.max(waiting.priority || 0, priority);
+    return;
+  }
   attachmentLoadKeys.add(key);
-  attachmentLoadQueue.push({ room, msgId, key });
+  attachmentLoadQueue.push({ room, msgId, key, priority });
   pumpAttachmentLoads();
 }
 
 function pumpAttachmentLoads() {
   while (attachmentLoadsRunning < ATTACHMENT_LOAD_CONCURRENCY && attachmentLoadQueue.length) {
-    const job = attachmentLoadQueue.pop();
+    let index = attachmentLoadQueue.length - 1;
+    for (let i = index - 1; i >= 0; i--)
+      if ((attachmentLoadQueue[i].priority || 0) > (attachmentLoadQueue[index].priority || 0)) index = i;
+    const job = attachmentLoadQueue.splice(index, 1)[0];
     attachmentLoadsRunning++;
     loadAttachmentRecord(job.room, job.msgId).catch(() => {}).finally(() => {
       attachmentLoadsRunning--;
@@ -22226,22 +22241,91 @@ async function loadAttachmentRecord(room, msgId) {
   return restored;
 }
 
+const viewportMediaSchedules = new WeakMap();
+
+function stopViewportMedia(body) {
+  if (!body) return;
+  viewportMediaSchedules.get(body)?.();
+  viewportMediaSchedules.delete(body);
+}
+
+function viewportMediaCandidates(body, selector) {
+  const viewport = body.getBoundingClientRect();
+  return [...body.querySelectorAll(selector)].map(node => {
+    const rect = node.getBoundingClientRect();
+    const visible = rect.bottom > viewport.top && rect.top < viewport.bottom;
+    const distance = visible ? 0 : Math.max(viewport.top - rect.bottom, rect.top - viewport.bottom);
+    return { node, visible, distance };
+  }).filter(item => item.node.getBoundingClientRect().height > 0)
+    .sort((left, right) => left.distance - right.distance);
+}
+
+function scheduleViewportMedia(body, { selector, active, request, cancelPending = () => {} }) {
+  stopViewportMedia(body);
+  let idleTimer = null, frame = null, prepared = 0;
+  const requestedNearby = new WeakSet();
+  const busy = () => attachmentLoadsRunning > 0
+    || (typeof privateGroupLoadsRunning !== 'undefined' && privateGroupLoadsRunning > 0);
+  const idle = () => {
+    if (!active() || document.hidden) return;
+    if (Date.now() - lastInteractionTime < 1000 || busy()) {
+      idleTimer = setTimeout(idle, 800); return;
+    }
+    if (prepared >= 3) return;
+    const next = viewportMediaCandidates(body, selector).find(item => !item.visible
+      && item.distance <= body.clientHeight && !requestedNearby.has(item.node));
+    if (!next) return;
+    requestedNearby.add(next.node); prepared++;
+    request(next.node, 0);
+    idleTimer = setTimeout(idle, 800);
+  };
+  const scan = () => {
+    frame = null;
+    if (!active() || document.hidden || !body.clientHeight) return;
+    cancelPending();
+    for (const item of viewportMediaCandidates(body, selector)) if (item.visible) request(item.node, 2);
+    clearTimeout(idleTimer); idleTimer = setTimeout(idle, 1200);
+  };
+  const scroll = () => {
+    prepared = 0;
+    clearTimeout(idleTimer);
+    if (frame === null) frame = requestAnimationFrame(scan);
+  };
+  body.addEventListener('scroll', scroll, { passive:true });
+  document.addEventListener('visibilitychange', scroll);
+  viewportMediaSchedules.set(body, () => {
+    clearTimeout(idleTimer);
+    if (frame !== null) cancelAnimationFrame(frame);
+    body.removeEventListener('scroll', scroll);
+    document.removeEventListener('visibilitychange', scroll);
+    cancelPending();
+  });
+  // Rendering may happen before the chat is made visible. Recheck next frame.
+  frame = requestAnimationFrame(scan);
+}
+
 function scheduleAttachmentLoads(body, room) {
   if (attachmentLoadObserver) attachmentLoadObserver.disconnect();
   const placeholders = [...body.querySelectorAll('.msg .attachment-loading, .msg .native-media-preview')];
-  if (!placeholders.length) return;
-  const request = node => {
+  const request = (node, priority = 2) => {
     const msgId = node.closest('.msg')?.dataset.msgId;
-    if (msgId) queueAttachmentLoad(room, msgId);
+    if (msgId) queueAttachmentLoad(room, msgId, priority);
   };
-  if (!('IntersectionObserver' in window)) { placeholders.slice(-6).forEach(request); return; }
+  scheduleViewportMedia(body, { selector:'.msg .attachment-loading, .msg .native-media-preview',
+    active:() => room.code === activeRoomCode && isRoomVisible(room) && !privateGroupChatOpen(), request,
+    cancelPending:() => {
+      for (let i = attachmentLoadQueue.length - 1; i >= 0; i--) if (attachmentLoadQueue[i].room === room) {
+        attachmentLoadKeys.delete(attachmentLoadQueue[i].key); attachmentLoadQueue.splice(i, 1);
+      }
+    } });
+  if (!placeholders.length || !('IntersectionObserver' in window)) return;
   attachmentLoadObserver = new IntersectionObserver(entries => {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
       attachmentLoadObserver.unobserve(entry.target);
-      request(entry.target);
+      request(entry.target, 2);
     }
-  }, { root:body, rootMargin:'400px 0px' });
+  }, { root:body, rootMargin:'0px' });
   placeholders.forEach(node => attachmentLoadObserver.observe(node));
 }
 
@@ -22267,6 +22351,21 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) retr
 const CHAT_NEAR_BOTTOM_PX = 96;
 const conversationLayouts = new Map();
 const conversationLayoutTimers = new Map();
+
+function beginLatestConversationOpen(body, code) {
+  conversationLayout(code).scroll = { bottom:true };
+  if (body) body.dataset.followLatest = '1';
+}
+
+for (const type of ['touchstart','pointerdown','wheel']) document.addEventListener(type, event => {
+  const body = event.target?.closest?.('#chat-body, #group-chat-body');
+  if (body) body.dataset.followLatest = '0';
+}, { passive:true });
+document.addEventListener('load', event => {
+  const body = event.target?.closest?.('#chat-body, #group-chat-body');
+  if (!body?.clientHeight || body.dataset.followLatest !== '1') return;
+  body.scrollTop = body.scrollHeight;
+}, true);
 
 function restoreConversationLayout(code, record) {
   if (record?.kind === 'conversation-layout') {
@@ -25141,6 +25240,40 @@ function restoreOwnTicks(room, messages) {
 }
 
 const mediaPreviewBackfillQueue = [];
+let recentMediaWarmupsStarted = 0;
+const RECENT_MEDIA_WARMUP_LIMIT = 6;
+const RECENT_MEDIA_WARMUP_BYTES = 8 * 1024 * 1024;
+
+async function downloadRecentMediaWhileIdle(path, payload) {
+  if (recentMediaWarmupsStarted >= RECENT_MEDIA_WARMUP_LIMIT || document.hidden
+      || Date.now() - lastInteractionTime < 1800) return null;
+  recentMediaWarmupsStarted++;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  const pause = setInterval(() => {
+    if (document.hidden || Date.now() - lastInteractionTime < 1000
+        || attachmentLoadsRunning > 0 || (typeof privateGroupLoadsRunning !== 'undefined' && privateGroupLoadsRunning > 0)) controller.abort();
+  }, 150);
+  let reader;
+  try {
+    const response = await fetch(path, { method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload), cache:'no-store', signal:controller.signal });
+    if (!response.ok || Number(response.headers.get('Content-Length')) > RECENT_MEDIA_WARMUP_BYTES || !response.body?.getReader) {
+      await response.body?.cancel().catch(() => {}); return null;
+    }
+    reader = response.body.getReader();
+    const decoder = new TextDecoder(); let bytes = 0, text = '';
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) return controller.signal.aborted ? null : text + decoder.decode();
+      bytes += chunk.value.byteLength;
+      if (bytes > RECENT_MEDIA_WARMUP_BYTES) { controller.abort(); return null; }
+      text += decoder.decode(chunk.value, {stream:true});
+    }
+  } catch (_) { return null; }
+  finally { clearTimeout(timeout); clearInterval(pause); await reader?.cancel().catch(() => {}); }
+}
+
 const mediaPreviewBackfillKeys = new Set();
 let mediaPreviewBackfillRunning = false;
 
@@ -25155,7 +25288,8 @@ function enqueueMediaPreviewBackfill(key, work) {
 function runMediaPreviewBackfill() {
   mediaPreviewBackfillRunning = true;
   setTimeout(async () => {
-    if (document.hidden || Date.now() - lastInteractionTime < 1800) {
+    if (document.hidden || Date.now() - lastInteractionTime < 1800 || attachmentLoadsRunning > 0
+        || (typeof privateGroupLoadsRunning !== 'undefined' && privateGroupLoadsRunning > 0)) {
       if (mediaPreviewBackfillQueue.length) runMediaPreviewBackfill();
       else mediaPreviewBackfillRunning = false;
       return;
@@ -25175,14 +25309,22 @@ function scheduleRoomPreviewBackfill(room) {
     const stored = await historyStoreLoad(room.code);
     const cached = parseSecureNativeHistory(room, await secureNativeLoadMessages(room.code, HISTORY_LOAD_LIMIT));
     const previews = new Set(cached.filter(rec => rec.nativeMediaPreview).map(rec => rec.id));
+    const newestMedia = stored.filter(msg => msg.type === 'message' && String(msg.content || '').startsWith(ENCRYPTED_ATTACHMENT_PREFIX)).at(-1);
     for (const msg of stored.slice(-HISTORY_LOAD_LIMIT).reverse()) {
       if (msg.type !== 'message' || !String(msg.content || '').startsWith(ENCRYPTED_ATTACHMENT_PREFIX)
           || previews.has(msg.id)) continue;
       enqueueMediaPreviewBackfill(`room:${room.code}:${msg.id}`, async () => {
         if (!room.sharedKey || isChatConcealed(room.code) || !nativeMessageCacheEligible(room, msg)
             || cacheRecordErased(room.code, msg.id) || room.deleteLedger?.has(msg.id)) return;
-        const ciphertext = await attachmentCacheGet(room.code, msg.content.slice(ENCRYPTED_ATTACHMENT_PREFIX.length));
-        if (!ciphertext) return; // Deliberately never download during migration.
+        const attachmentId = msg.content.slice(ENCRYPTED_ATTACHMENT_PREFIX.length);
+        let ciphertext = await attachmentCacheGet(room.code, attachmentId);
+        if (!ciphertext && msg.id === newestMedia?.id && Number(msg.ts) > Date.now() - 2 * 86400000) {
+          const accountId = loadAccountState()?.accountId;
+          ciphertext = await downloadRecentMediaWhileIdle('/api/attachment/content', {code:room.code,token:room.token,attachmentId});
+          if (!accountId || loadAccountState()?.accountId !== accountId || rooms.get(room.code) !== room || cacheRecordErased(room.code,msg.id)) return;
+          if (ciphertext) await attachmentCachePut(room.code,attachmentId,msg.id,ciphertext);
+        }
+        if (!ciphertext) return;
         const rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts),
           msg.id, msg.ts, msg.from, msg.deleteTimerSeconds || 0, msg.readAt, null, null, ciphertext);
         if (!rec || !['file','album'].includes(rec.kind) || rec.viewOnce

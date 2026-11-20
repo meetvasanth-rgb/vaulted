@@ -175,8 +175,8 @@ test('restoring history never downloads media; placeholders load as they scroll 
   assert.match(client, /const ATTACHMENT_LOAD_CONCURRENCY = 2;/);
   assert.match(client, /attachmentLoadObserver = new IntersectionObserver/);
   assert.match(client, /scheduleAttachmentLoads\(body, room\);/);
-  // newest first: what the reader is looking at
-  assert.match(client, /const job = attachmentLoadQueue\.pop\(\);/);
+  assert.match(client, /attachmentLoadQueue\[i\]\.priority/);
+  assert.match(client, /const job = attachmentLoadQueue\.splice\(index, 1\)\[0\];/);
 });
 
 test('a loaded attachment replaces its placeholder in place without moving the reader', () => {
