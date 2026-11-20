@@ -440,7 +440,7 @@ const RECLAIM_WARNING_WINDOWS = [
 // full 5-minute voice note, measured from this app's actual MediaRecorder
 // default bitrate (~129kbps, no explicit bitrate is ever set), came out far
 // smaller (~8.17MB) and isn't the binding constraint.
-const MAX_MESSAGE_CONTENT_BYTES = 48 * 1024 * 1024; // headroom above the ~44.45MB double-base64 ceiling
+const MAX_MESSAGE_CONTENT_BYTES = 96 * 1024 * 1024; // headroom for a 50MB video after double-base64 expansion (~88.9MB)
 
 // A per-room budget can never bound total memory on its own — room
 // creation is attacker-controlled (rate-limited, but not capped), so

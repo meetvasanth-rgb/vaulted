@@ -1275,8 +1275,8 @@ public class MainActivity extends BridgeActivity {
         // the export callback.
         private final java.util.Map<String, ChunkedVideoUpload> chunkedVideoUploads = new java.util.HashMap<>();
         private static final int MAX_CHUNKED_VIDEO_SOURCE_BYTES = 150 * 1024 * 1024;
-        private static final int MAX_COMPRESSED_VIDEO_BYTES = 25 * 1024 * 1024;
-        // 720p first; if that still doesn't fit under the 25MB ceiling, one
+        private static final int MAX_COMPRESSED_VIDEO_BYTES = 50 * 1024 * 1024;
+        // 720p first; if that still doesn't fit under the 50MB ceiling, one
         // more attempt at a visibly lower resolution/bitrate rather than
         // giving up outright — never falling back to the untouched original
         // is only safe because this retry exists.
@@ -1646,14 +1646,14 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public boolean shareMedia(String dataUrl, String requestedName) {
-            if (dataUrl == null || dataUrl.length() > 36_000_000) return false;
+            if (dataUrl == null || dataUrl.length() > 72_000_000) return false;
             int marker = dataUrl.indexOf(";base64,");
             if (!dataUrl.startsWith("data:") || marker < 6) return false;
             String mime = dataUrl.substring(5, marker);
             if (!mime.matches("[A-Za-z0-9][A-Za-z0-9.+-]*/[A-Za-z0-9][A-Za-z0-9.+;=_-]*")) return false;
             try {
                 byte[] bytes = Base64.decode(dataUrl.substring(marker + 8), Base64.DEFAULT);
-                if (bytes.length == 0 || bytes.length > 25 * 1024 * 1024) return false;
+                if (bytes.length == 0 || bytes.length > 50 * 1024 * 1024) return false;
                 String safeName = requestedName == null ? "vaultlix-file" : requestedName.replaceAll("[^A-Za-z0-9._ -]", "_");
                 if (safeName.trim().isEmpty()) safeName = "vaultlix-file";
                 File directory = new File(getCacheDir(), "shared-media");
@@ -1677,14 +1677,14 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public boolean saveMedia(String dataUrl, String requestedName) {
-            if (dataUrl == null || dataUrl.length() > 36_000_000) return false;
+            if (dataUrl == null || dataUrl.length() > 72_000_000) return false;
             int marker = dataUrl.indexOf(";base64,");
             if (!dataUrl.startsWith("data:") || marker < 6) return false;
             String mime = dataUrl.substring(5, marker);
             if (!mime.matches("[A-Za-z0-9][A-Za-z0-9.+-]*/[A-Za-z0-9][A-Za-z0-9.+;=_-]*")) return false;
             try {
                 byte[] bytes = Base64.decode(dataUrl.substring(marker + 8), Base64.DEFAULT);
-                if (bytes.length == 0 || bytes.length > 25 * 1024 * 1024) return false;
+                if (bytes.length == 0 || bytes.length > 50 * 1024 * 1024) return false;
                 String safeName = requestedName == null ? "vaultlix-file" : requestedName.replaceAll("[^A-Za-z0-9._ -]", "_");
                 if (safeName.trim().isEmpty()) safeName = "vaultlix-file";
                 File directory = new File(getCacheDir(), "saved-media");
@@ -1712,14 +1712,14 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public boolean openMedia(String dataUrl, String requestedName) {
-            if (dataUrl == null || dataUrl.length() > 36_000_000) return false;
+            if (dataUrl == null || dataUrl.length() > 72_000_000) return false;
             int marker = dataUrl.indexOf(";base64,");
             if (!dataUrl.startsWith("data:") || marker < 6) return false;
             String mime = dataUrl.substring(5, marker);
             if (!mime.matches("[A-Za-z0-9][A-Za-z0-9.+-]*/[A-Za-z0-9][A-Za-z0-9.+;=_-]*")) return false;
             try {
                 byte[] bytes = Base64.decode(dataUrl.substring(marker + 8), Base64.DEFAULT);
-                if (bytes.length == 0 || bytes.length > 25 * 1024 * 1024) return false;
+                if (bytes.length == 0 || bytes.length > 50 * 1024 * 1024) return false;
                 String safeName = requestedName == null ? "vaultlix-file" : requestedName.replaceAll("[^A-Za-z0-9._ -]", "_");
                 if (safeName.trim().isEmpty()) safeName = "vaultlix-file";
                 File directory = new File(getCacheDir(), "open-media");

@@ -6110,7 +6110,7 @@ function historyStoreWipeAll() {
 const ATTACHMENT_CACHE_MAX_BYTES = 600 * 1024 * 1024; // the default; Settings > Storage can change it
 const ATTACHMENT_CACHE_LIMIT_KEY = 'vaultlix_attachment_cache_limit_mb'; // its own key, never the room blob
 const ATTACHMENT_CACHE_LIMIT_CHOICES_MB = [200, 600, 1024, 2048];
-const ATTACHMENT_CACHE_MAX_ITEM_BYTES = 48 * 1024 * 1024;
+const ATTACHMENT_CACHE_MAX_ITEM_BYTES = 96 * 1024 * 1024;
 const ATTACHMENT_CACHE_TOUCH_MS = 60 * 60 * 1000;
 
 function attachmentTransaction(mode, work) {
@@ -6606,7 +6606,8 @@ let accountSyncTimer = null;
 // be generously long, not a safety mechanism in itself.
 const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 const QUICK_REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
-const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB attachment limit — also the hard ceiling a video must fit under AFTER native compression
+const MAX_FILE_SIZE = 25 * 1024 * 1024; // Original document/photo attachment limit.
+const MAX_COMPRESSED_VIDEO_BYTES = 50 * 1024 * 1024; // Per-video ceiling after native compression.
 // Videos get their own, larger source-file ceiling: MAX_FILE_SIZE above stays
 // the limit for what actually goes on the wire, but a source video well
 // above that can still legitimately compress down under it. Bounded (not
@@ -11612,7 +11613,7 @@ async function api(path, data = null) {
 const ENCRYPTED_ATTACHMENT_PREFIX = 'obj:v1:';
 // A 25 MiB source grows to about 44.45 MiB after file base64 plus the
 // encrypted envelope's base64. Keep a small allowance for JSON metadata.
-const MAX_ENCRYPTED_ATTACHMENT_BYTES = 48 * 1024 * 1024;
+const MAX_ENCRYPTED_ATTACHMENT_BYTES = 96 * 1024 * 1024;
 // Album members are separate encrypted attachment objects, so this ceiling
 // applies independently to each selected photo or video.
 const ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS = [0, 500, 1500, 4000];
@@ -12694,7 +12695,7 @@ function attachmentUnavailableText(reason) { return ATTACHMENT_UNAVAILABLE_LABEL
 function attachmentUnavailableHtml(rec) {
   return `<div class="msg-blocked attachment-retry" role="button" tabindex="0">${escHtml(attachmentUnavailableText(rec?.unavailableReason))}</div>`;
 }
-const ATTACHMENT_LOADING_HTML = `<div class="msg-image-preview-loading attachment-loading" role="status">Loading encrypted attachment…</div>`;
+const ATTACHMENT_LOADING_HTML = `<div class="msg-image-preview-loading attachment-loading" role="status" aria-label="Loading media"></div>`;
 
 function setStatus(online, name) {
   const presence = document.getElementById('chat-presence');
@@ -21659,7 +21660,7 @@ function renderVaultList() {
     if (entry.kind === 'group') {
       const group = entry.group;
       const opening = openingPrivateGroupId === group.id;
-      const preview = opening ? 'Opening encrypted group…' : group.requiresRekey ? 'Updating group encryption…' : `${group.members?.length || 1} members · Encrypted group`;
+      const preview = opening ? 'Encrypted group' : group.requiresRekey ? 'Updating group encryption…' : `${group.members?.length || 1} members · Encrypted group`;
       html += `<div class="vault-list-row group-list-row${opening ? ' opening' : ''}" data-group="${escHtml(group.id)}" data-group-opening="${opening}" aria-busy="${opening}">
         <span class="vault-list-avatar group-row-avatar">${typeof privateGroupAvatarMarkup === 'function' ? privateGroupAvatarMarkup(group) : '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20v-2a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v2M15 14.5a4 4 0 0 1 6 3.5v2"/></svg>'}</span>
         <span class="vault-list-row-name">${escHtml(group.name || 'Private group')}</span>
@@ -21672,7 +21673,7 @@ function renderVaultList() {
     const connectionSpark = roomConnectionSpark(room);
     const label = roomDisplayLabel(room);
     const preview = room.restorePending
-      ? { text:'Opening securely…', alert:false }
+      ? { text:'Encrypted conversation', alert:false }
       : room.reconnectRequired
       ? { text:'Secure reconnection required · tap to open', alert:true }
       : room.restoreUnavailable
@@ -21770,7 +21771,7 @@ function prepareChatBodyForFirstPaint() {
   if (klipyGifObserver) klipyGifObserver.disconnect();
   const room = rooms.get(activeRoomCode);
   if (room?.restorePending || (room && !room.historyLoaded)) {
-    body.innerHTML = '<div class="chat-restore-pending" role="status"><div class="typing-indicator show" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div><span>Opening encrypted conversation…</span></div>';
+    body.innerHTML = '<div class="chat-restore-pending" role="status"><div class="typing-indicator show" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div><span></span></div>';
     return;
   }
   body.innerHTML = '<div class="typing-indicator peer-typing" id="typing-indicator" aria-label="Typing"><span class="peer-typing-avatar" id="typing-avatar"></span><span class="peer-typing-dots"><i class="t-dot"></i><i class="t-dot"></i><i class="t-dot"></i></span></div>';
@@ -22251,7 +22252,7 @@ function renderChatBody(room, { keepDistanceFromBottom = null } = {}) {
     if (room.historyLoadFailed) {
       body.innerHTML = '<button class="chat-restore-pending" type="button" onclick="retryChatHistory()"><span>Could not load encrypted messages</span><strong>Tap to retry</strong></button>';
     } else {
-      body.innerHTML = '<div class="chat-restore-pending" role="status"><div class="typing-indicator show" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div><span>Opening encrypted conversation…</span></div>';
+      body.innerHTML = '<div class="chat-restore-pending" role="status"><div class="typing-indicator show" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div><span></span></div>';
     }
     return;
   }
@@ -23414,7 +23415,7 @@ function buildAlbumGridHtml(rec) {
                   ? `<video class="msg-album-video-local" src="${safeSrc}" muted playsinline preload="metadata"></video><span class="msg-album-video-play">▶</span>`
                   : `<img class="msg-album-video-thumb" src="${safeSrc}" alt="Video preview" loading="lazy" decoding="async" draggable="false"/><span class="msg-album-video-play">▶</span>`)
               : `<img class="msg-image" src="${safeSrc}" alt="" loading="lazy" decoding="async" draggable="false"/>`)
-          : `<div class="msg-image-preview-loading" data-image-preview-msg="${escHtml(rec.id)}" data-image-preview-item="${escHtml(img.id)}" role="status">Opening encrypted media…</div>`);
+          : `<div class="msg-image-preview-loading" data-image-preview-msg="${escHtml(rec.id)}" data-image-preview-item="${escHtml(img.id)}" role="status"></div>`);
     // Keyed off img.id (a stable local id), not the loop position i —
     // opening two view-once photos in the same album close together would
     // otherwise let the first one's later array splice shift which photo
@@ -23928,7 +23929,7 @@ function renderMessageRecord(room, rec, animate) {
       const nativePreviewClass = rec.nativeMediaPreview && !rec.base64 ? ' native-media-preview' : '';
       mediaHtml = safeSrc
         ? `${badge}<img class="msg-image${nativePreviewClass}" src="${safeSrc}" alt="${escHtml(rec.fileName)}" loading="lazy" decoding="async" onclick="handleImageTap(this.src, '${rec.id}')" oncontextmenu="return false" draggable="false"/>`
-        : `${badge}<div class="msg-image-preview-loading" data-image-preview-msg="${escHtml(rec.id)}" role="status">Opening encrypted image…</div>`;
+        : `${badge}<div class="msg-image-preview-loading" data-image-preview-msg="${escHtml(rec.id)}" role="status"></div>`;
     } else if (isPdfAttachment(rec.mime, rec.fileName)) {
       const thumbnail = safeImageDataUri('image/jpeg', rec.pdfPreview);
       const preview = thumbnail
@@ -24052,7 +24053,7 @@ function renderMessageRecord(room, rec, animate) {
   renderReactionsForRec(div, rec);
   // A live decrypted image can arrive without the compact preview carried by
   // newer senders. Full chat re-renders already schedule this work, but the
-  // one-record live path previously left "Opening encrypted image…" in place
+  // one-record live path previously left "" in place
   // until the app was reopened even though the original was ready to view.
   if (animate && rec.kind === 'file' && rec.isImage && !rec.imagePreview) {
     queueMessageImagePreview(rec);
@@ -24965,7 +24966,7 @@ async function applyRestoredHistory(room, messages, nowTs, { confirmReads = true
   // During a native cold restore, SQLCipher thumbnails are read immediately
   // after this IndexedDB envelope pass. Do not paint the temporary encrypted
   // attachment cards in between those two local reads: on Android that made a
-  // cached photo visibly flash "Opening encrypted image…" for one frame.
+  // cached photo visibly flash "" for one frame.
   if (attachmentMessages.length && isRoomVisible(room) && !deferAttachmentRender) renderChatBody(room);
 }
 
@@ -29067,10 +29068,10 @@ async function sendSelectedFilesToRoom(room, files, options = {}) {
         currentVideoController = null;
         if (isVideo && compressedVideo?.cancelled) continue;
         // Never fall back to the raw original when a video genuinely needed
-        // compression and couldn't get under 25MB — this used to silently
+        // compression and could not get under 50MB — this used to silently
         // upload the oversized file instead.
         if (isVideo && !compressedVideo) {
-          toast(`“${file.name}” couldn’t be compressed under 25MB — try a shorter or lower-resolution video`);
+          toast(`“${file.name}” couldn’t be compressed under 50MB — try a shorter or lower-resolution video`);
           continue;
         }
         const preparedFile = compressedVideo
@@ -30705,10 +30706,10 @@ async function compressVideoFile(file, controller = null) {
   if (file.size > MAX_VIDEO_SOURCE_BYTES) return null;
   // Re-encoding a tiny clip costs more battery than it saves, and it
   // already fits — send it untouched.
-  if (file.size <= MAX_FILE_SIZE && file.size < 1024 * 1024) {
+  if (file.size <= MAX_COMPRESSED_VIDEO_BYTES && file.size < 1024 * 1024) {
     return { base64: await fileToBase64(file), mime: file.type, name: file.name };
   }
-  const mustCompress = file.size > MAX_FILE_SIZE;
+  const mustCompress = file.size > MAX_COMPRESSED_VIDEO_BYTES;
   if (!nativeChunkedVideoCompressionAvailable()) {
     if (mustCompress) return null;
     return { base64: await fileToBase64(file), mime: file.type, name: file.name };
@@ -30718,7 +30719,7 @@ async function compressVideoFile(file, controller = null) {
   const compressed = typeof result?.base64 === 'string' ? result.base64 : '';
   const compressedBytes = compressed ? Math.ceil(compressed.length * 3 / 4) : Infinity;
   const fitsAfterCompression = result?.ok === true && isValidMediaBase64(compressed)
-    && compressedBytes < file.size && compressedBytes <= MAX_FILE_SIZE;
+    && compressedBytes < file.size && compressedBytes <= MAX_COMPRESSED_VIDEO_BYTES;
   if (fitsAfterCompression) {
     const baseName = String(file.name || 'vaultlix-video').replace(/\.[^.]+$/, '').slice(0, 120) || 'vaultlix-video';
     const outputMime = result?.mime === 'video/mp4' ? result.mime : 'video/mp4';

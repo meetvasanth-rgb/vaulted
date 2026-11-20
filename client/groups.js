@@ -28,7 +28,7 @@ function groupMemberLabel(group, accountId) {
 }
 
 const MAX_PRIVATE_GROUP_FILE_BYTES = 25 * 1024 * 1024;
-const MAX_PRIVATE_GROUP_ATTACHMENT_BYTES = 48 * 1024 * 1024;
+const MAX_PRIVATE_GROUP_ATTACHMENT_BYTES = 96 * 1024 * 1024;
 const PRIVATE_GROUP_AVATAR_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20v-2a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v2M15 14.5a4 4 0 0 1 6 3.5v2"/></svg>';
 
 function privateGroupAvatarMarkup(group) {
@@ -436,9 +436,9 @@ async function handlePrivateGroupFileSelect(event) {
       currentVideoController = null;
       if (isVideo && compressedVideo?.cancelled) continue;
       // Never fall back to the raw original when a video genuinely needed
-      // compression and couldn't get under 25MB.
+      // compression and could not get under 50MB.
       if (isVideo && !compressedVideo) {
-        toast(`“${file.name}” couldn’t be compressed under 25MB — try a shorter or lower-resolution video`);
+        toast(`“${file.name}” couldn’t be compressed under 50MB — try a shorter or lower-resolution video`);
         continue;
       }
       base64 = compressedVideo ? compressedVideo.base64 : await fileToBase64(file);
@@ -932,7 +932,7 @@ function renderPrivateGroupMessages(group, { keepDistanceFromBottom = null } = {
     return;
   }
   if (!group.historyHydrated) {
-    body.innerHTML = '<div class="group-chat-empty">Loading encrypted messages…</div>';
+    body.innerHTML = '<div class="group-chat-empty"></div>';
     return;
   }
   const deleted = privateGroupDeletedIds(group.messages || [], group.hiddenIds || []);

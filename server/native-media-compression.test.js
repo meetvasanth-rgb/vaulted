@@ -27,7 +27,7 @@ test('direct and group videos compress before encryption, streamed to native in 
   assert.match(client, /action:'appendVideoCompressionChunk'/);
   assert.match(client, /action:'finishVideoCompression'/);
   assert.match(client, /action:'cancelVideoCompression'/);
-  assert.match(client, /compressedBytes < file\.size && compressedBytes <= MAX_FILE_SIZE/);
+  assert.match(client, /compressedBytes < file\.size && compressedBytes <= MAX_COMPRESSED_VIDEO_BYTES/);
   // A video that genuinely needs compression to fit and can't get there
   // must never fall back to the raw original — it has to return null and
   // the caller must refuse to send it, not silently upload it anyway.
@@ -38,7 +38,7 @@ test('direct and group videos compress before encryption, streamed to native in 
   assert.match(groups, /mime = compressedVideo\.mime/);
   // Both send paths must refuse an oversized video rather than upload it.
   for (const source of [client, groups]) {
-    assert.match(source, /couldn.t be compressed under 25MB/);
+    assert.match(source, /couldn.t be compressed under 50MB/);
   }
 });
 
@@ -59,7 +59,7 @@ test('Android streams chunks to a temp file and retries at a lower quality tier 
   assert.match(android, /public void finishVideoCompression\(/);
   assert.match(android, /public void cancelVideoCompression\(/);
   assert.match(android, /MAX_CHUNKED_VIDEO_SOURCE_BYTES = 150 \* 1024 \* 1024/);
-  assert.match(android, /MAX_COMPRESSED_VIDEO_BYTES = 25 \* 1024 \* 1024/);
+  assert.match(android, /MAX_COMPRESSED_VIDEO_BYTES = 50 \* 1024 \* 1024/);
   assert.match(android, /VIDEO_COMPRESSION_TIER_HEIGHTS = \{ 720, 480 \}/);
   assert.match(android, /VIDEO_COMPRESSION_TIER_BITRATES = \{ 2_500_000, 1_200_000 \}/);
   assert.match(android, /Presentation\.createForHeight\(VIDEO_COMPRESSION_TIER_HEIGHTS\[tier\]\)/);
@@ -78,7 +78,7 @@ test('iOS streams chunks to a temp file and retries at a lower quality tier befo
   assert.match(ios, /func finishVideoCompression\(/);
   assert.match(ios, /func cancelVideoCompression\(/);
   assert.match(ios, /maxChunkedVideoSourceBytes = 150 \* 1024 \* 1024/);
-  assert.match(ios, /maxCompressedVideoBytes = 25 \* 1024 \* 1024/);
+  assert.match(ios, /maxCompressedVideoBytes = 50 \* 1024 \* 1024/);
   assert.match(ios, /\[AVAssetExportPreset1280x720, AVAssetExportPreset640x480, AVAssetExportPresetMediumQuality\]/);
   assert.match(ios, /exporter\.outputFileType = \.mp4/);
   assert.match(ios, /exporter\.shouldOptimizeForNetworkUse = true/);
@@ -87,7 +87,7 @@ test('iOS streams chunks to a temp file and retries at a lower quality tier befo
   assert.doesNotMatch(ios, /func compressVideoForMessaging/);
 });
 
-test('large compressed videos remain downloadable and shareable in both native apps, with the 25MB output ceiling enforced natively', () => {
+test('large compressed videos remain downloadable and shareable in both native apps, with the 50MB output ceiling enforced natively', () => {
   assert.match(android, /totalBytes > MAX_CHUNKED_VIDEO_SOURCE_BYTES/);
   assert.match(android, /bytes\.length <= MAX_COMPRESSED_VIDEO_BYTES/);
   assert.match(ios, /totalBytes <= Self\.maxChunkedVideoSourceBytes/);

@@ -579,11 +579,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     }
 
     // Source videos up to 150MB are allowed through — the exported result
-    // must still land at or under 25MB (see attemptVideoExport below); that
+    // must still land at or under 50MB (see attemptVideoExport below); that
     // output ceiling, not this input one, is what a message can actually
     // carry.
     private static let maxChunkedVideoSourceBytes = 150 * 1024 * 1024
-    private static let maxCompressedVideoBytes = 25 * 1024 * 1024
+    private static let maxCompressedVideoBytes = 50 * 1024 * 1024
 
     private func beginVideoCompression(requestId: String, filename: String, totalBytes: Int, mime: String) {
         chunkedVideoUploadQueue.async { [weak self] in
@@ -645,7 +645,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         defer { try? FileManager.default.removeItem(at: inputURL) }
         let asset = AVURLAsset(url: inputURL)
         let compatible = AVAssetExportSession.exportPresets(compatibleWith: asset)
-        // 720p first; if that still doesn't fit under the 25MB ceiling, one
+        // 720p first; if that still doesn't fit under the 50MB ceiling, one
         // more attempt at a visibly lower resolution rather than giving up
         // outright — never falling back to the untouched original is only
         // safe because this retry exists.
@@ -1179,10 +1179,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
 
     private func presentNativeVideo(dataURL: String, filename: String) {
         guard dataURL.hasPrefix("data:video/"),
-              dataURL.count <= 36_000_000,
+              dataURL.count <= 72_000_000,
               let marker = dataURL.range(of: ";base64,"),
               let data = Data(base64Encoded: String(dataURL[marker.upperBound...])),
-              !data.isEmpty, data.count <= 25 * 1024 * 1024,
+              !data.isEmpty, data.count <= 50 * 1024 * 1024,
               let presenter = topViewController(from: window?.rootViewController),
               presenter.viewIfLoaded?.window != nil else {
             emit(name: "vaultlix:native-media-failed", detail: [:])
@@ -1503,11 +1503,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         if action == "shareMedia" {
             guard let dataURL = body["dataUrl"] as? String,
                   dataURL.hasPrefix("data:"),
-                  dataURL.count <= 36_000_000,
+                  dataURL.count <= 72_000_000,
                   let marker = dataURL.range(of: ";base64,"),
                   marker.lowerBound > dataURL.index(dataURL.startIndex, offsetBy: 5),
                   let data = Data(base64Encoded: String(dataURL[marker.upperBound...])),
-                  !data.isEmpty, data.count <= 25 * 1024 * 1024 else {
+                  !data.isEmpty, data.count <= 50 * 1024 * 1024 else {
                 emit(name: "vaultlix:share-image-failed", detail: [:])
                 return
             }
@@ -1526,11 +1526,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         if action == "saveMedia" {
             guard let dataURL = body["dataUrl"] as? String,
                   dataURL.hasPrefix("data:"),
-                  dataURL.count <= 36_000_000,
+                  dataURL.count <= 72_000_000,
                   let marker = dataURL.range(of: ";base64,"),
                   marker.lowerBound > dataURL.index(dataURL.startIndex, offsetBy: 5),
                   let data = Data(base64Encoded: String(dataURL[marker.upperBound...])),
-                  !data.isEmpty, data.count <= 25 * 1024 * 1024 else {
+                  !data.isEmpty, data.count <= 50 * 1024 * 1024 else {
                 emit(name: "vaultlix:share-image-failed", detail: [:])
                 return
             }
@@ -1552,11 +1552,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         if action == "openMedia" {
             guard let dataURL = body["dataUrl"] as? String,
                   dataURL.hasPrefix("data:"),
-                  dataURL.count <= 36_000_000,
+                  dataURL.count <= 72_000_000,
                   let marker = dataURL.range(of: ";base64,"),
                   marker.lowerBound > dataURL.index(dataURL.startIndex, offsetBy: 5),
                   let data = Data(base64Encoded: String(dataURL[marker.upperBound...])),
-                  !data.isEmpty, data.count <= 25 * 1024 * 1024 else {
+                  !data.isEmpty, data.count <= 50 * 1024 * 1024 else {
                 emit(name: "vaultlix:share-image-failed", detail: [:])
                 return
             }
@@ -1896,7 +1896,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
                           let mime = entry["mime"], mime.hasPrefix("image/") else { continue }
                     let fileURL = transaction.appendingPathComponent(stored)
                     guard let data = try? Data(contentsOf: fileURL, options: [.mappedIfSafe]),
-                          !data.isEmpty, data.count <= 25 * 1024 * 1024 else { continue }
+                          !data.isEmpty, data.count <= 50 * 1024 * 1024 else { continue }
                     payload.append([
                         "name": String((entry["name"] ?? "Shared image").prefix(180)),
                         "mime": mime,

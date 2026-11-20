@@ -16,9 +16,9 @@ test('direct and private-group file attachments allow 25 MB sources', () => {
 });
 
 test('encrypted attachment ceilings accommodate double-base64 expansion', () => {
-  assert.match(client, /const MAX_ENCRYPTED_ATTACHMENT_BYTES = 48 \* 1024 \* 1024/);
-  assert.match(groups, /const MAX_PRIVATE_GROUP_ATTACHMENT_BYTES = 48 \* 1024 \* 1024/);
-  assert.match(server, /const MAX_MESSAGE_CONTENT_BYTES = 48 \* 1024 \* 1024/);
+  assert.match(client, /const MAX_ENCRYPTED_ATTACHMENT_BYTES = 96 \* 1024 \* 1024/);
+  assert.match(groups, /const MAX_PRIVATE_GROUP_ATTACHMENT_BYTES = 96 \* 1024 \* 1024/);
+  assert.match(server, /const MAX_MESSAGE_CONTENT_BYTES = 96 \* 1024 \* 1024/);
   assert.match(server, /const BODY_LIMIT_SEND = 20 \* 1024 \* 1024/);
 });
 
