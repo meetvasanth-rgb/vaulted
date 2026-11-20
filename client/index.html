@@ -1170,12 +1170,17 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 
 .app-lock-overlay{position:fixed;inset:0;z-index:10030;background:rgba(14,8,11,.72);display:none;align-items:flex-end;justify-content:center;padding:16px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .app-lock-overlay.open{display:flex}
-.app-lock-sheet{width:min(520px,100%);max-height:calc(100vh - 32px);overflow:auto;background:#FFFDF9;border-radius:22px;padding:22px;box-sizing:border-box;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.app-lock-sheet{width:min(520px,100%);max-height:calc(100dvh - 32px);overflow:auto;background:#FFFFFF;border-radius:22px;padding:22px;box-sizing:border-box;box-shadow:0 20px 60px rgba(0,0,0,.35)}
 .app-lock-title{margin:0 0 8px;font-family:'Cormorant Garamond',serif;font-size:29px;color:#241B1E}
 .app-lock-copy{font-size:13px;line-height:1.55;color:#6B5D61;margin-bottom:16px}
 .app-lock-field{display:block;margin:11px 0}.app-lock-field span{display:block;margin-bottom:6px;color:#5F5055;font-size:12px;font-weight:600}
 .app-lock-field input{width:100%;box-sizing:border-box;border:1px solid #DDD1D4;border-radius:12px;padding:12px 13px;font-size:16px;outline:none}.app-lock-field input:focus{border-color:#8A3C57}
 .app-lock-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}.app-lock-actions button{border:1px solid #D8CDD0;border-radius:999px;background:#fff;color:#5A4B50;padding:10px 16px;cursor:pointer}.app-lock-actions .primary{background:#682C43;border-color:#682C43;color:#fff}.app-lock-actions .danger{color:#9B2945;border-color:#D8A2AE}
+#app-lock-setup-form .app-lock-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding-bottom:env(safe-area-inset-bottom)}
+#app-lock-setup-form .app-lock-actions button{min-width:0;min-height:46px;border-radius:12px;padding:12px 14px;font:650 14px/1.2 'Inter',sans-serif;white-space:nowrap}
+#app-lock-disable{grid-column:1/-1;background:#FFFFFF}
+.app-lock-overlay .app-lock-sheet{background:#FFFFFF}
+.app-lock-overlay .locker-sheet::before{display:none}
 .vault-list-settings[hidden]{display:none!important}
 .hidden-chats-sheet{font-family:'Inter',sans-serif}.hidden-chats-sheet .locker-brand{margin-bottom:17px}.hidden-chats-sheet .app-lock-copy{margin-bottom:18px}.hidden-chats-sheet .app-lock-actions{align-items:stretch}.hidden-chats-sheet .app-lock-actions button{min-width:0;min-height:46px;border-radius:14px;font:750 13px/1.25 'Manrope',sans-serif}
 .hidden-chats-secret-input,.local-secret-input{-webkit-text-security:disc}
