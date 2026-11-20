@@ -3421,6 +3421,27 @@ html.vaultlix-native-android #settings-panel .settings-menu .settings-row-icon{w
 html.vaultlix-native-android #settings-panel .settings-menu .settings-row-title{font-size:16px;font-weight:600;line-height:1.3;letter-spacing:normal}
 html.vaultlix-native-android #settings-panel .settings-menu .settings-row-sub{font-size:14px;font-weight:400;line-height:1.45;margin-top:4px;color:#756970}
 html.vaultlix-native-android #settings-panel .settings-menu .settings-link-chevron{flex:0 0 14px;margin-left:0}
+/* Match group conversation weights to each platform's direct chats. */
+html.vaultlix-native-ios .group-message-text{font-weight:400!important;line-height:1.4!important;letter-spacing:normal!important}
+html.vaultlix-native-ios .group-chat-title{font-weight:600;letter-spacing:normal}
+html.vaultlix-native-ios .group-message-name,
+html.vaultlix-native-android .group-message-name{font-weight:600;letter-spacing:normal}
+html.vaultlix-native-android .group-message-name{font-size:12px}
+html.vaultlix-native-ios .group-message-time,
+html.vaultlix-native-android .group-message-time,
+html.vaultlix-native-ios .group-reply-quote,
+html.vaultlix-native-android .group-reply-quote,
+html.vaultlix-native-ios #group-message-input,
+html.vaultlix-native-android #group-message-input{font-weight:400;letter-spacing:normal}
+html.vaultlix-native-android .group-message-time{font-size:12px}
+html.vaultlix-native-android #group-message-input{font-size:16px}
+/* Nine main settings choices fit normal phone heights; short screens retain scrolling. */
+html.vaultlix-native-android #settings-panel.settings-menu-open .settings-body{min-height:0;padding:4px 0 calc(8px + var(--android-safe-area-bottom,0px));display:flex;flex-direction:column}
+html.vaultlix-native-android #settings-panel.settings-menu-open .settings-menu{flex:1;display:grid;grid-template-rows:repeat(9,minmax(min-content,1fr));gap:6px;min-height:588px;padding:0 12px;box-sizing:border-box}
+html.vaultlix-native-android #settings-panel.settings-menu-open .settings-menu .settings-link-row{min-height:60px;margin:0;padding:8px 12px;gap:10px;border-radius:15px}
+html.vaultlix-native-android #settings-panel.settings-menu-open .settings-menu .settings-row-icon{width:36px;height:36px;flex-basis:36px;border-radius:11px}
+html.vaultlix-native-android #settings-panel.settings-menu-open .settings-menu .settings-row-sub{font-size:13px;line-height:1.35;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html.vaultlix-native-android #settings-panel.settings-menu-open .settings-version{display:none}
 </style>
 <script type="application/ld+json">
 {
@@ -13007,6 +13028,7 @@ function settingsBack() {
 
 function showSettingsMenu() {
   settingsCategory = null;
+  document.getElementById('settings-panel').classList.add('settings-menu-open');
   document.getElementById('settings-menu').style.display = '';
   document.getElementById('settings-header-title').textContent = i18n('settings');
   document.getElementById('settings-general-section').style.display = 'none';
@@ -13028,6 +13050,7 @@ function showSettingsMenu() {
 
 function openSettingsCategory(category) {
   settingsCategory = category;
+  document.getElementById('settings-panel').classList.remove('settings-menu-open');
   const room = getActiveRoom();
   const titles = { share:'Share', profile:i18n('profile'), privacy:i18n('privacy_security'), notifications:i18n('notifications'), chats:i18n('chats'), storage:'Storage', calls:i18n('calls'), help:i18n('help'), language:i18n('language') };
   document.getElementById('settings-menu').style.display = 'none';
