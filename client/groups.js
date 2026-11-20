@@ -255,13 +255,16 @@ const privateGroupNativePreviewJobs = new Set();
 function queuePrivateGroupNativePreview(group, message) {
   const key = `${group?.id || ''}:${message?.id || ''}`;
   if (!isNativeApp() || !group?.id || !message?.id || !message.attachment || privateGroupNativePreviewJobs.has(key)) return;
+  const accountId = loadAccountState()?.accountId;
   const isVideo = message.attachment.type === 'group-file' && String(message.attachment.mime || '').startsWith('video/');
   if (!['group-image','group-album'].includes(message.attachment.type) && !isVideo) return;
   privateGroupNativePreviewJobs.add(key);
-  Promise.resolve().then(async () => {
+  return Promise.resolve().then(async () => {
     let attachment;
     if (isVideo) {
-      const videoThumb = message.attachment.videoThumb ? await makeTinyThumbnail(message.attachment.videoThumb, 'image/jpeg', 320, 0.64) : null;
+      const source = message.attachment.videoThumb || (message.attachment.data
+        ? await createVideoAttachmentThumbnailFromBase64(message.attachment.data, message.attachment.mime) : null);
+      const videoThumb = source ? await makeTinyThumbnail(source, 'image/jpeg', 320, 0.64) : null;
       if (!videoThumb) return;
       attachment = { ...message.attachment, data:'', videoThumb, previewOnly:true };
     } else if (message.attachment.type === 'group-image') {
@@ -276,6 +279,9 @@ function queuePrivateGroupNativePreview(group, message) {
       attachment = { ...message.attachment, items:items.filter(Boolean), previewOnly:true };
       if (!attachment.items.length) return;
     }
+    if (loadAccountState()?.accountId !== accountId || privateGroups.get(group.id) !== group
+        || cacheRecordErased(privateGroupCacheCode(group.id), message.id)
+        || !nativeMessageCacheEligible(group, message) || (group.hiddenIds || []).includes(message.id)) return;
     const nativeRecord = {
       id:message.id, kind:'group-media-preview', createdAt:message.createdAt,
       senderId:message.senderId, attachmentId:message.attachmentId,
@@ -1527,7 +1533,7 @@ async function decodePrivateGroupEnvelope(group, message) {
 }
 
 async function decodePrivateGroupAttachment(group, state, message, attachmentId, options = {}) {
-  const encryptedPayload = await downloadPrivateGroupAttachment(state, group, attachmentId, message.id, options);
+  const encryptedPayload = options.localCiphertext || await downloadPrivateGroupAttachment(state, group, attachmentId, message.id, options);
   let payload;
   try {
     payload = JSON.parse(await decryptPrivateGroupValue(group.keys?.[message.keyVersion], encryptedPayload));
@@ -1648,7 +1654,7 @@ async function loadPrivateGroupAttachment(groupId, messageId) {
 
 // Swaps one drawn message for its new content without touching the rest of the
 // chat or moving the reader's place.
-function replacePrivateGroupRow(group, message) {
+async function replacePrivateGroupRow(group, message) {
   const body = document.getElementById('group-chat-body');
   const old = body?.querySelector(`[data-group-msg-id="${CSS.escape(message.id)}"]`);
   if (!old) return;
@@ -1658,6 +1664,8 @@ function replacePrivateGroupRow(group, message) {
   holder.innerHTML = privateGroupRowHtml(group, message, reactions, state);
   const row = holder.firstElementChild;
   if (!row) return;
+  if (!await decodeReplacementImages(row) || !old.isConnected || group.id !== activePrivateGroupId
+      || !group.messages.includes(message)) return;
   const previousTop = body.scrollTop;
   const wasAtBottom = body.scrollHeight - previousTop - body.clientHeight <= 96;
   const oldRect = old.getBoundingClientRect();
@@ -1782,6 +1790,30 @@ function privateGroupCanLoadEarlier(group) {
 }
 
 // Paints what this device already has, before (and without) the network.
+function schedulePrivateGroupPreviewBackfill(group) {
+  if (!group?.id || !hasPrivateGroupKeys(group)) return;
+  enqueueMediaPreviewBackfill(`group:${group.id}`, async () => {
+    const state = loadAccountState();
+    if (!state || !hasPrivateGroupKeys(group)) return;
+    const page = await historyStoreLoadPage(privateGroupCacheCode(group.id), { limit:HISTORY_LOAD_LIMIT });
+    const decoded = await decodePrivateGroupBatch(group, state, page.messages);
+    const native = await secureNativeLoadMessages(privateGroupCacheCode(group.id), HISTORY_LOAD_LIMIT);
+    const previews = new Set(native.map(value => { try { return (typeof value === 'string' ? JSON.parse(value) : value)?.id; } catch (_) { return null; } }));
+    for (const message of decoded.reverse()) {
+      if (!message.attachmentId || previews.has(message.id)) continue;
+      enqueueMediaPreviewBackfill(`group:${group.id}:${message.id}`, async () => {
+        if (!hasPrivateGroupKeys(group) || (group.hiddenIds || []).includes(message.id)
+            || !nativeMessageCacheEligible(group, message)) return;
+        const ciphertext = await attachmentCacheGet(privateGroupCacheCode(group.id), message.attachmentId);
+        if (!ciphertext) return;
+        const next = await decodePrivateGroupAttachment(group, state, message, message.attachmentId, { localCiphertext:ciphertext });
+        if ((group.hiddenIds || []).includes(message.id)) return;
+        await queuePrivateGroupNativePreview(group, next);
+      });
+    }
+  });
+}
+
 function restorePrivateGroupHistory(group, state) {
   if (group.historyRestored) return Promise.resolve();
   const existing = privateGroupRestores.get(group.id);
@@ -1797,6 +1829,7 @@ function restorePrivateGroupHistory(group, state) {
     group.localHasMore = page.hasMore;
     group.updatedAt = group.messages[group.messages.length - 1]?.createdAt || group.updatedAt;
     group.historyHydrated = true;
+    schedulePrivateGroupPreviewBackfill(group);
     if (group.id === activePrivateGroupId) renderPrivateGroupMessages(group);
   })().catch(() => { group.historyRestored = true; }).finally(() => privateGroupRestores.delete(group.id));
   privateGroupRestores.set(group.id, job);

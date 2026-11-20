@@ -5553,11 +5553,13 @@ function secureNativeStoreCompactMessage(conversationId, messageId, record, sour
 function queueSecureNativeMediaPreview(room, rec) {
   const key = `${room?.code || ''}:${rec?.id || ''}`;
   if (!room?.code || !rec?.id || secureNativePreviewJobs.has(key)) return;
+  const accountId = loadAccountState()?.accountId;
   secureNativePreviewJobs.add(key);
-  Promise.resolve().then(async () => {
+  return Promise.resolve().then(async () => {
     let nativeRecord = null;
     if (rec.kind === 'file' && String(rec.mime || '').startsWith('video/') && rec.encryptedAttachmentRef) {
-      const videoThumb = rec.videoThumb ? await makeTinyThumbnail(rec.videoThumb, 'image/jpeg', 320, 0.64) : null;
+      const source = rec.videoThumb || (rec.base64 ? await createVideoAttachmentThumbnailFromBase64(rec.base64, rec.mime) : null);
+      const videoThumb = source ? await makeTinyThumbnail(source, 'image/jpeg', 320, 0.64) : null;
       if (videoThumb) nativeRecord = { ...rec, base64:'', videoThumb, nativeMediaPreview:true, pending:false, attachmentRetrying:false };
     } else if (rec.kind === 'file' && rec.isImage && rec.encryptedAttachmentRef) {
       const hasPreview = !!safeMessageImagePreview(rec.imagePreview);
@@ -5576,6 +5578,10 @@ function queueSecureNativeMediaPreview(room, rec) {
       if (images.some(image => image.imagePreview || image.videoThumb))
         nativeRecord = { ...rec, images, nativeMediaPreview:true, pending:false, attachmentRetrying:false };
     }
+    if (loadAccountState()?.accountId !== accountId || rooms.get(room.code) !== room
+        || cacheRecordErased(room.code, rec.id) || pendingMessageErasures.has(JSON.stringify([room.code, rec.id]))
+        || rec.deleted || rec.viewOnce || rec.images?.some(image => image.viewOnce)
+        || !nativeMessageCacheEligible(room, rec)) return;
     if (nativeRecord && !secureNativeStoreCompactMessage(room.code, rec.id, nativeRecord, rec)
         && rec.kind === 'album') {
       const images = await Promise.all(nativeRecord.images.map(async image => {
@@ -5718,6 +5724,7 @@ async function restoreSecureNativeHistory(room) {
 // idle slice so opening and scrolling stay responsive.
 function scheduleSecureNativeHistoryCache(room, records) {
   if (!isNativeApp() || !room?.code) return;
+  scheduleRoomPreviewBackfill(room);
   for (const rec of records) {
     if (!rec?.id || rec.kind === 'sys' || rec.kind === 'blocked' || rec.kind === 'attachment-unavailable'
         || rec.kind === 'attachment-loading' || !nativeMessageCacheEligible(room, rec)
@@ -22125,20 +22132,38 @@ function attachmentPlaceholderNode(msgId) {
 
 // Swap one already-drawn message for its new content without touching the rest
 // of the chat or moving the reader's place.
-function replaceRenderedMessage(room, rec) {
+async function decodeReplacementImages(node) {
+  const images = [...node.querySelectorAll('img')];
+  return (await Promise.all(images.map(async image => {
+    image.loading = 'eager';
+    if (image.complete && image.naturalWidth) return true;
+    if (typeof image.decode !== 'function') return true;
+    let timer;
+    try {
+      return await Promise.race([image.decode().then(() => true, () => false),
+        new Promise(resolve => { timer = setTimeout(() => resolve(false), 10000); })]);
+    } finally { clearTimeout(timer); }
+  }))).every(Boolean);
+}
+
+async function replaceRenderedMessage(room, rec) {
   const body = document.getElementById('chat-body');
   if (!body || room.code !== activeRoomCode || !document.getElementById('s-chat')?.classList.contains('active')) return;
   const old = body.querySelector(`.msg[data-msg-id="${CSS.escape(rec.id)}"]`);
   if (!old) return;
+  const div = renderMessageRecord(room, rec, false);
+  if (!div || div === old) return;
+  // Rendering appends synchronously. Detach before yielding, keeping the
+  // existing thumbnail in place until every replacement image has decoded.
+  div.remove();
+  if (!await decodeReplacementImages(div) || !old.isConnected
+      || room.code !== activeRoomCode || !room.messages.includes(rec)) return;
   const previousTop = body.scrollTop;
   const wasAtBottom = body.scrollHeight - previousTop - body.clientHeight <= 96;
   const bodyTop = body.getBoundingClientRect().top;
   const oldRect = old.getBoundingClientRect();
   const oldAbove = oldRect.bottom <= bodyTop;
-  const div = renderMessageRecord(room, rec, false); // appends at the end and scrolls down
-  if (div && div !== old) {
-    if (div.parentNode === body) old.replaceWith(div); else old.remove();
-  }
+  old.replaceWith(div);
   if (wasAtBottom) { body.scrollTop = body.scrollHeight; return; }
   body.scrollTop = previousTop + (oldAbove && div ? div.getBoundingClientRect().height - oldRect.height : 0);
 }
@@ -24698,12 +24723,12 @@ async function retryUnavailableAttachment(room, msgId, element) {
   toast(restored?.unavailableReason === 'gone' ? 'This attachment is no longer available.' : 'Attachment is still unavailable. Please try again.');
 }
 
-async function processIncomingContent(room, content, name, time, msgId, timestamp = 0, fromToken = null, deleteTimerSeconds = 0, readAt = null, progressCallback = null, editOf = null) {
+async function processIncomingContent(room, content, name, time, msgId, timestamp = 0, fromToken = null, deleteTimerSeconds = 0, readAt = null, progressCallback = null, editOf = null, localCiphertext = null) {
   if (!content) return null;
   const base = { deleteTimerSeconds, readAt, id: msgId, isMe: false, name, time, ts:Number(timestamp) || 0, receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null };
   const encryptedAttachmentRef = typeof content === 'string' && content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX) ? content : null;
   try {
-    content = await resolveEncryptedAttachment(room, content, msgId, { onProgress:progressCallback });
+    content = localCiphertext || await resolveEncryptedAttachment(room, content, msgId, { onProgress:progressCallback });
   } catch (error) {
     console.warn('E2E: encrypted attachment could not be loaded', msgId, error?.reason || error?.message);
     return { ...base, kind:'attachment-unavailable', encryptedAttachmentRef:content, fromToken, unavailableReason:error?.reason || attachmentFailureReason(error) };
@@ -24986,6 +25011,69 @@ function restoreOwnTicks(room, messages) {
     .map(message => ({ msgId:message.id, deliveredAt:message.deliveredAt, readAt:message.readAt, deleteTimerSeconds:0 })));
 }
 
+const mediaPreviewBackfillQueue = [];
+const mediaPreviewBackfillKeys = new Set();
+let mediaPreviewBackfillRunning = false;
+
+function enqueueMediaPreviewBackfill(key, work) {
+  if (!isNativeApp() || mediaPreviewBackfillKeys.has(key)) return;
+  mediaPreviewBackfillKeys.add(key);
+  const accountId = loadAccountState()?.accountId;
+  mediaPreviewBackfillQueue.push({ work, accountId });
+  if (!mediaPreviewBackfillRunning) runMediaPreviewBackfill();
+}
+
+function runMediaPreviewBackfill() {
+  mediaPreviewBackfillRunning = true;
+  setTimeout(async () => {
+    if (document.hidden || Date.now() - lastInteractionTime < 1800) {
+      if (mediaPreviewBackfillQueue.length) runMediaPreviewBackfill();
+      else mediaPreviewBackfillRunning = false;
+      return;
+    }
+    const job = mediaPreviewBackfillQueue.shift();
+    try {
+      if (job && job.accountId && loadAccountState()?.accountId === job.accountId) await job.work();
+    } catch (_) { /* A missing local file is left to normal on-demand loading. */ }
+    if (mediaPreviewBackfillQueue.length) runMediaPreviewBackfill();
+    else mediaPreviewBackfillRunning = false;
+  }, 1000);
+}
+
+function scheduleRoomPreviewBackfill(room) {
+  if (!room?.sharedKey || room.restorePending || isChatConcealed(room.code)) return;
+  enqueueMediaPreviewBackfill(`room:${room.code}`, async () => {
+    const stored = await historyStoreLoad(room.code);
+    const cached = parseSecureNativeHistory(room, await secureNativeLoadMessages(room.code, HISTORY_LOAD_LIMIT));
+    const previews = new Set(cached.filter(rec => rec.nativeMediaPreview).map(rec => rec.id));
+    for (const msg of stored.slice(-HISTORY_LOAD_LIMIT).reverse()) {
+      if (msg.type !== 'message' || !String(msg.content || '').startsWith(ENCRYPTED_ATTACHMENT_PREFIX)
+          || previews.has(msg.id)) continue;
+      enqueueMediaPreviewBackfill(`room:${room.code}:${msg.id}`, async () => {
+        if (!room.sharedKey || isChatConcealed(room.code) || !nativeMessageCacheEligible(room, msg)
+            || cacheRecordErased(room.code, msg.id) || room.deleteLedger?.has(msg.id)) return;
+        const ciphertext = await attachmentCacheGet(room.code, msg.content.slice(ENCRYPTED_ATTACHMENT_PREFIX.length));
+        if (!ciphertext) return; // Deliberately never download during migration.
+        const rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts),
+          msg.id, msg.ts, msg.from, msg.deleteTimerSeconds || 0, msg.readAt, null, null, ciphertext);
+        if (!rec || !['file','album'].includes(rec.kind) || rec.viewOnce
+            || !nativeMessageCacheEligible(room, rec) || cacheRecordErased(room.code, msg.id)) return;
+        rec.isMe = msg.from === room.token;
+        await queueSecureNativeMediaPreview(room, rec);
+      });
+    }
+  });
+}
+
+// Prime recent conversations without opening them or marking anything read.
+setTimeout(() => {
+  if (!isNativeApp()) return;
+  for (const room of rooms.values()) scheduleRoomPreviewBackfill(room);
+  if (typeof schedulePrivateGroupPreviewBackfill === 'function') {
+    for (const group of privateGroups.values()) schedulePrivateGroupPreviewBackfill(group);
+  }
+}, 5000);
+
 // Stage one of opening a conversation: decrypt and show the messages already
 // stored on this device. Returns them so the server check can reconcile.
 async function restoreLocalHistory(room) {
@@ -25011,6 +25099,7 @@ async function restoreLocalHistory(room) {
   } catch (error) {
     console.warn('Local history could not be restored', error?.message);
   }
+  scheduleRoomPreviewBackfill(room);
   return [...stored, ...nativeRecords];
 }
 
