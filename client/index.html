@@ -1700,6 +1700,7 @@ html.vaultlix-native-ios.vaultlix-native-video-active .call-actions{visibility:h
 .settings-overlay.open{opacity:1;pointer-events:all}
 .settings-panel{position:fixed;top:0;right:0;bottom:0;width:min(360px,100vw);background:#FFFFFF;z-index:401;transform:translateX(100%);transition:transform .3s cubic-bezier(.34,1.56,.64,1);display:flex;flex-direction:column;overflow-y:auto;box-shadow:-4px 0 32px rgba(0,0,0,0.15)}
 .settings-panel.open{transform:translateX(0)}
+@media(max-width:600px){.settings-panel{width:100vw;max-width:none}}
 
 .settings-header{display:flex;align-items:center;gap:12px;padding:calc(20px + env(safe-area-inset-top)) 20px 16px;border-bottom:0.5px solid #F0EBE3;flex-shrink:0}
 .settings-back{width:32px;height:32px;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#9A8C7E;border-radius:50%;transition:all .15s;padding:0;flex-shrink:0}
