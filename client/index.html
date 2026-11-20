@@ -1181,6 +1181,10 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 #app-lock-disable{grid-column:1/-1;background:#FFFFFF}
 .app-lock-overlay .app-lock-sheet{background:#FFFFFF}
 .app-lock-overlay .locker-sheet::before{display:none}
+@media(max-width:600px){
+  #app-lock-overlay,#hidden-chats-overlay,#locker-setup-overlay,#locker-unlock-overlay,#locker-vault-overlay,#emergency-overlay{background:#FFFFFF;backdrop-filter:none;-webkit-backdrop-filter:none;padding-top:calc(16px + env(safe-area-inset-top));padding-bottom:calc(16px + env(safe-area-inset-bottom))}
+  .app-lock-overlay .app-lock-sheet,#emergency-overlay .emergency-sheet{background:#FFFFFF;box-shadow:none;max-height:calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom))}
+}
 .vault-list-settings[hidden]{display:none!important}
 .hidden-chats-sheet{font-family:'Inter',sans-serif}.hidden-chats-sheet .locker-brand{margin-bottom:17px}.hidden-chats-sheet .app-lock-copy{margin-bottom:18px}.hidden-chats-sheet .app-lock-actions{align-items:stretch}.hidden-chats-sheet .app-lock-actions button{min-width:0;min-height:46px;border-radius:14px;font:750 13px/1.25 'Manrope',sans-serif}
 .hidden-chats-secret-input,.local-secret-input{-webkit-text-security:disc}
