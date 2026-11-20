@@ -37,6 +37,7 @@ function load({ decode } = {}) {
     CSS:{ escape:value => value },
     window:{ addEventListener() {} },
     replacePrivateGroupRow:(group, message) => log.replaced.push(message.id + ':' + (message.attachmentState || 'loaded')),
+    queuePrivateGroupNativePreview:() => {},
     decodePrivateGroupAttachment:async (group, state, message, attachmentId, options) => {
       log.decoded.push([message.id, attachmentId, Object.keys(message).sort().join(',')]);
       if (decode) return decode(message);

@@ -246,7 +246,53 @@ const privateGroupDownloads = new Map();
 // Leaving, deleting or being removed from a group takes everything saved for it
 // on this device: its message history and its downloaded attachments.
 function forgetPrivateGroupData(groupId) {
-  if (groupId) historyStoreClearRoom(privateGroupCacheCode(groupId));
+  if (!groupId) return;
+  secureNativeClearConversation(privateGroupCacheCode(groupId));
+}
+
+const privateGroupNativePreviewJobs = new Set();
+
+function queuePrivateGroupNativePreview(group, message) {
+  const key = `${group?.id || ''}:${message?.id || ''}`;
+  if (!isNativeApp() || !group?.id || !message?.id || !message.attachment || privateGroupNativePreviewJobs.has(key)) return;
+  if (!['group-image','group-album'].includes(message.attachment.type)) return;
+  privateGroupNativePreviewJobs.add(key);
+  Promise.resolve().then(async () => {
+    let attachment;
+    if (message.attachment.type === 'group-image') {
+      const data = await makeTinyThumbnail(message.attachment.data, message.attachment.mime, 320, 0.64);
+      if (!data) return;
+      attachment = { ...message.attachment, data, mime:'image/jpeg', previewOnly:true };
+    } else {
+      const items = await Promise.all((message.attachment.items || []).map(async item => {
+        const data = await makeTinyThumbnail(item.data, item.mime, 180, 0.56);
+        return data ? { ...item, data, mime:'image/jpeg', previewOnly:true } : null;
+      }));
+      attachment = { ...message.attachment, items:items.filter(Boolean), previewOnly:true };
+      if (!attachment.items.length) return;
+    }
+    secureNativeStoreCompactMessage(privateGroupCacheCode(group.id), message.id, {
+      id:message.id, kind:'group-media-preview', createdAt:message.createdAt,
+      senderId:message.senderId, attachmentId:message.attachmentId,
+      attachment, nativeMediaPreview:true,
+    });
+  }).catch(() => {}).finally(() => privateGroupNativePreviewJobs.delete(key));
+}
+
+async function restorePrivateGroupNativePreviews(group) {
+  const values = await secureNativeLoadMessages(privateGroupCacheCode(group.id), HISTORY_LOAD_LIMIT);
+  const previews = new Map();
+  for (const value of values || []) {
+    let rec;
+    try { rec = typeof value === 'string' ? JSON.parse(value) : value; } catch (_) { continue; }
+    if (rec?.kind === 'group-media-preview' && rec.nativeMediaPreview && rec.attachment) previews.set(rec.id, rec);
+  }
+  for (let index = 0; index < (group.messages || []).length; index++) {
+    const current = group.messages[index]; const preview = previews.get(current.id);
+    if (!preview || current.attachmentState !== 'loading' || current.attachmentId !== preview.attachmentId) continue;
+    group.messages[index] = { ...current, attachmentState:'native-preview',
+      attachment:preview.attachment, nativeMediaPreview:true };
+  }
 }
 
 // The encrypted attachment text, from this device when it is already there.
@@ -310,6 +356,7 @@ async function sendPrivateGroupAttachment(payload, onProgress) {
       groupId:group.id, messageId, ciphertext, attachmentId });
     if (result.error) throw new Error(result.error);
     pending.attachmentId = attachmentId; pending.createdAt = result.createdAt; pending.keyVersion = result.keyVersion; pending.pending = false;
+    queuePrivateGroupNativePreview(group, pending);
     group.updatedAt = result.createdAt; renderPrivateGroupMessages(group); renderVaultList();
   } catch (error) {
     group.messages = (group.messages || []).filter(message => message !== pending);
@@ -787,7 +834,7 @@ function privateGroupRowHtml(group, message, reactions, state) {
     } else if (message.attachmentState === 'unavailable') {
       content = attachmentUnavailableHtml({ unavailableReason:message.unavailableReason }); usable = false;
     } else if (message.attachment?.type === 'group-album') {
-      content = `<div class="msg-media-wrap">${privateGroupAlbumGridHtml(message)}</div>`;
+      content = `<div class="msg-media-wrap${message.nativeMediaPreview ? ' native-media-preview' : ''}">${privateGroupAlbumGridHtml(message)}</div>`;
       if (message.pending) content = `<div class="msg-upload-pending">${content}${attachmentUploadAnimationHtml()}</div>`;
       if (message.attachment.caption) content += `<div class="group-message-text">${linkifyHtml(message.attachment.caption)}</div>`;
     } else if (message.attachment?.type === 'group-image') {
@@ -795,7 +842,7 @@ function privateGroupRowHtml(group, message, reactions, state) {
       // opens viewImage(), and saving is an explicit action inside it.
       const safeSrc = safeImageDataUri(message.attachment.mime, message.attachment.data);
       content = safeSrc
-        ? `<div class="msg-media-wrap"><img class="msg-image" src="${safeSrc}" alt="${escHtml(message.attachment.name || 'Group photo')}" onclick="openPrivateGroupImage('${escHtml(message.id)}')" oncontextmenu="return false" draggable="false"/></div>`
+        ? `<div class="msg-media-wrap${message.nativeMediaPreview ? ' native-media-preview' : ''}"><img class="msg-image" src="${safeSrc}" alt="${escHtml(message.attachment.name || 'Group photo')}" onclick="openPrivateGroupImage('${escHtml(message.id)}')" oncontextmenu="return false" draggable="false"/></div>`
         : MEDIA_BLOCKED_HTML;
       usable = !!safeSrc;
       if (message.pending) content = `<div class="msg-upload-pending">${content}${attachmentUploadAnimationHtml()}</div>`;
@@ -1565,12 +1612,14 @@ async function loadPrivateGroupAttachment(groupId, messageId) {
   try {
     next = await decodePrivateGroupAttachment(group, state, clean, current.attachmentId, { onProgress:showProgress });
   } catch (error) {
+    if (current.nativeMediaPreview) { current.attachmentLoading = false; return null; }
     next = { ...clean, attachmentState:'unavailable', unavailableReason:error?.corrupt ? 'failed' : attachmentFailureReason(error),
       autoRetries:error?.corrupt ? ATTACHMENT_AUTO_RETRIES : (autoRetries || 0) };
   } finally { current.attachmentLoading = false; }
   const index = group.messages.indexOf(current);
   if (index < 0) return null; // deleted or replaced meanwhile
   group.messages[index] = next;
+  queuePrivateGroupNativePreview(group, next);
   if (group.id === activePrivateGroupId) replacePrivateGroupRow(group, next);
   return next;
 }
@@ -1620,7 +1669,7 @@ function wirePrivateGroupAttachmentRetry(row, group) {
 
 function schedulePrivateGroupAttachmentLoads(body, group) {
   if (privateGroupLoadObserver) privateGroupLoadObserver.disconnect();
-  const placeholders = [...body.querySelectorAll('.group-msg .attachment-loading')];
+  const placeholders = [...body.querySelectorAll('.group-msg .attachment-loading, .group-msg .native-media-preview')];
   if (!placeholders.length) return;
   const request = node => {
     const id = node.closest('.group-msg')?.dataset.groupMsgId;
@@ -1721,6 +1770,7 @@ function restorePrivateGroupHistory(group, state) {
     if (!page.messages.length) return;
     const decoded = await decodePrivateGroupBatch(group, state, page.messages);
     mergePrivateGroupMessages(group, decoded);
+    if (typeof isNativeApp === 'function' && isNativeApp()) await restorePrivateGroupNativePreviews(group);
     group.messageCursor = Math.max(group.messageCursor || 0, ...page.messages.map(message => Number(message.createdAt) || 0));
     group.localHasMore = page.hasMore;
     group.updatedAt = group.messages[group.messages.length - 1]?.createdAt || group.updatedAt;

@@ -195,7 +195,7 @@ test('load earlier keeps the reader in place and reports a network failure', asy
 });
 
 test('wiring: leave/delete forget history, the list offers the button, dates and scroll are kept', () => {
-  assert.match(groups, /function forgetPrivateGroupData\(groupId\) \{\s*if \(groupId\) historyStoreClearRoom\(privateGroupCacheCode\(groupId\)\);/);
+  assert.match(groups, /function forgetPrivateGroupData\(groupId\)[\s\S]*secureNativeClearConversation\(privateGroupCacheCode\(groupId\)\)/);
   assert.match(groups, /onclick="loadEarlierPrivateGroupMessages\(\)">Load earlier messages/);
   assert.match(groups, /const separator = day !== previousDay \? daySeparatorHtml\(message\.createdAt\) : ''/);
   assert.match(groups, /keepDistanceFromBottom/);

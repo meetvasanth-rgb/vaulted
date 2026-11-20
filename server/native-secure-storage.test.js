@@ -51,8 +51,9 @@ test('image thumbnails survive cold launch only inside encrypted native history'
   const store = client.match(/function secureNativeStoreMessage\(room, rec\)[\s\S]*?\n}/)[0];
   assert.match(store, /nativeRecord = rec\.kind === 'file' && rec\.isImage/);
   assert.match(store, /base64:'', nativeMediaPreview:true/);
-  assert.ok(store.indexOf('JSON.stringify(nativeRecord)') < store.indexOf('secureStoreMessage'));
-  assert.match(client, /existing\.kind === 'attachment-loading' && rec\.kind === 'file' && rec\.nativeMediaPreview/);
+  assert.match(client, /function secureNativeStoreCompactMessage[\s\S]*JSON\.stringify\(record\)[\s\S]*secureStoreMessage/);
+  assert.match(client, /existing\.kind === 'attachment-loading' && \['file','album'\]\.includes\(rec\.kind\) && rec\.nativeMediaPreview/);
+  assert.match(client, /queueSecureNativeMediaPreview[\s\S]*makeTinyThumbnail[\s\S]*320/);
   assert.match(client, /\.msg \.attachment-loading, \.msg \.native-media-preview/);
   assert.match(client, /hasEncryptedNativePreview && restored\.kind === 'attachment-unavailable'/);
 });

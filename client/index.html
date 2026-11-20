@@ -3234,6 +3234,9 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 @keyframes vx-collection-enter{from{opacity:0;transform:translate3d(0,10px,0) scale(.97)}to{opacity:1;transform:none}}
 .screen.ui-entering:not(#s-chat){animation:vx-screen-enter .28s cubic-bezier(.22,.8,.24,1) both}
 #s-vault-list.ui-entering .vault-list-row{animation:vx-row-enter .32s cubic-bezier(.22,.8,.24,1) both;animation-delay:var(--vx-delay,0ms)}
+/* Android can repaint the inbox more than once while its encrypted native
+   cache and live account snapshot merge. Do not replay the row animation. */
+html.vaultlix-native-android #s-vault-list.ui-entering:not(#s-chat),html.vaultlix-native-android #s-vault-list.ui-entering .vault-list-row{animation:none!important}
 .settings-panel.ui-category-enter .settings-category-page.active,.settings-panel.ui-category-enter .settings-section:not([style*="display: none"]){animation:vx-screen-enter .24s cubic-bezier(.22,.8,.24,1) both}
 .settings-panel.open .settings-menu .settings-link-row{animation:vx-row-enter .3s cubic-bezier(.22,.8,.24,1) both;animation-delay:var(--vx-delay,0ms)}
 .settings-panel.open .settings-menu .settings-link-row:nth-child(2){--vx-delay:22ms}.settings-panel.open .settings-menu .settings-link-row:nth-child(3){--vx-delay:44ms}.settings-panel.open .settings-menu .settings-link-row:nth-child(4){--vx-delay:66ms}.settings-panel.open .settings-menu .settings-link-row:nth-child(5){--vx-delay:88ms}.settings-panel.open .settings-menu .settings-link-row:nth-child(6){--vx-delay:110ms}.settings-panel.open .settings-menu .settings-link-row:nth-child(7){--vx-delay:132ms}.settings-panel.open .settings-menu .settings-link-row:nth-child(8){--vx-delay:154ms}.settings-panel.open .settings-menu .settings-link-row:nth-child(9){--vx-delay:176ms}
@@ -5506,6 +5509,7 @@ if(window.webkit?.messageHandlers?.vaultlixCall||window.Capacitor?.getPlatform?.
 }
 
 const secureNativeCachedRecords = new WeakSet();
+const secureNativePreviewJobs = new Set();
 const secureNativeCacheQueue = [];
 const secureNativeCacheKeys = new Set();
 let secureNativeCacheScheduled = false;
@@ -5525,6 +5529,60 @@ function nativeMessageCacheEligible(room, rec) {
     || Number(rec.deleteAt) > 0 || Number(rec.expiresAt) > 0);
 }
 
+function secureNativeStoreCompactMessage(conversationId, messageId, record, sourceRecord = null) {
+  if (!conversationId || !messageId || !record) return false;
+  let plaintext;
+  try { plaintext = JSON.stringify(record); } catch (_) { return false; }
+  if (plaintext.length > 256 * 1024) return false;
+  try {
+    if (typeof window.VaultlixAndroid?.secureStoreMessage === 'function') {
+      if (window.VaultlixAndroid.secureStoreMessage(conversationId, messageId, plaintext, Date.now()) === false) return false;
+    } else {
+      window.webkit?.messageHandlers?.vaultlixCall?.postMessage({
+        action:'secureStoreMessage', conversationId, messageId, plaintext, createdAt:Date.now(),
+      });
+    }
+    if (sourceRecord) secureNativeCachedRecords.add(sourceRecord);
+    return true;
+  } catch (_) { console.warn('Native encrypted cache write failed'); return false; }
+}
+
+function queueSecureNativeMediaPreview(room, rec) {
+  const key = `${room?.code || ''}:${rec?.id || ''}`;
+  if (!room?.code || !rec?.id || secureNativePreviewJobs.has(key)) return;
+  secureNativePreviewJobs.add(key);
+  Promise.resolve().then(async () => {
+    let nativeRecord = null;
+    if (rec.kind === 'file' && rec.isImage && rec.encryptedAttachmentRef) {
+      const hasPreview = !!safeMessageImagePreview(rec.imagePreview);
+      const imagePreview = await makeTinyThumbnail(hasPreview ? rec.imagePreview : rec.base64,
+        hasPreview ? 'image/jpeg' : rec.mime, 320, 0.64);
+      if (imagePreview) nativeRecord = { ...rec, base64:'', imagePreview, nativeMediaPreview:true, pending:false, attachmentRetrying:false };
+    } else if (rec.kind === 'album' && rec.encryptedAttachmentRef && Array.isArray(rec.images)) {
+      const images = await Promise.all(rec.images.map(async image => {
+        const isVideo = image.kind === 'video' || String(image.mime || '').startsWith('video/');
+        const source = isVideo ? image.videoThumb : (image.imagePreview || image.base64);
+        const mime = isVideo || image.imagePreview ? 'image/jpeg' : image.mime;
+        const preview = source ? await makeTinyThumbnail(source, mime, 220, 0.60) : null;
+        return { ...image, base64:'', imagePreview:isVideo ? null : preview,
+          videoThumb:isVideo ? preview : null, localPreviewUrl:null };
+      }));
+      if (images.some(image => image.imagePreview || image.videoThumb))
+        nativeRecord = { ...rec, images, nativeMediaPreview:true, pending:false, attachmentRetrying:false };
+    }
+    if (nativeRecord && !secureNativeStoreCompactMessage(room.code, rec.id, nativeRecord, rec)
+        && rec.kind === 'album') {
+      const images = await Promise.all(nativeRecord.images.map(async image => {
+        const source = image.videoThumb || image.imagePreview;
+        const preview = source ? await makeTinyThumbnail(source, 'image/jpeg', 150, 0.52) : null;
+        return { ...image, imagePreview:image.videoThumb ? null : preview,
+          videoThumb:image.videoThumb ? preview : null };
+      }));
+      secureNativeStoreCompactMessage(room.code, rec.id, { ...nativeRecord, images }, rec);
+    }
+  }).catch(() => {}).finally(() => secureNativePreviewJobs.delete(key));
+}
+
 function secureNativeStoreMessage(room, rec) {
   if (!room?.code || !rec?.id || rec.kind === 'sys' || rec.kind === 'blocked'
       || rec.kind === 'attachment-unavailable' || rec.kind === 'attachment-loading'
@@ -5540,6 +5598,16 @@ function secureNativeStoreMessage(room, rec) {
       && rec.encryptedAttachmentRef && safeMessageImagePreview(rec.imagePreview)
     ? { ...rec, base64:'', nativeMediaPreview:true, pending:false, attachmentRetrying:false }
     : rec;
+  if (rec.kind === 'album' && rec.encryptedAttachmentRef) {
+    // Do not stringify the full album merely to discover it is too large for
+    // the native bridge; build its compact encrypted tile record directly.
+    queueSecureNativeMediaPreview(room, rec);
+    return;
+  }
+  if (rec.kind === 'file' && rec.isImage && rec.encryptedAttachmentRef) {
+    if (!secureNativeStoreCompactMessage(room.code, rec.id, nativeRecord, rec)) queueSecureNativeMediaPreview(room, rec);
+    return;
+  }
   let plaintext;
   try { plaintext = JSON.stringify(nativeRecord); } catch (e) { return; }
   // Android's JavaScript bridge is synchronous. Passing a multi-megabyte
@@ -5547,17 +5615,7 @@ function secureNativeStoreMessage(room, rec) {
   // JS heap while also freezing touch input. Cache compact history only;
   // object-backed media remains recoverable from its encrypted object.
   if (plaintext.length > 256 * 1024) return;
-  try {
-    if (typeof window.VaultlixAndroid?.secureStoreMessage === 'function') {
-      if (window.VaultlixAndroid.secureStoreMessage(room.code, rec.id, plaintext, Date.now()) === false) return;
-    } else {
-      window.webkit?.messageHandlers?.vaultlixCall?.postMessage({
-        action:'secureStoreMessage', conversationId:room.code, messageId:rec.id,
-        plaintext, createdAt:Date.now(),
-      });
-    }
-    secureNativeCachedRecords.add(rec);
-  } catch (e) { console.warn('Native encrypted cache write failed'); }
+  secureNativeStoreCompactMessage(room.code, rec.id, nativeRecord, rec);
 }
 
 function secureNativeLoadMessages(conversationId, limit = 50) {
@@ -5622,7 +5680,7 @@ async function restoreSecureNativeHistory(room) {
       // IndexedDB restores the E2E attachment reference as a loading record
       // first. Replace only that placeholder with the encrypted native
       // thumbnail; text and already-hydrated media always win.
-      if (existing.kind === 'attachment-loading' && rec.kind === 'file' && rec.nativeMediaPreview) {
+      if (existing.kind === 'attachment-loading' && ['file','album'].includes(rec.kind) && rec.nativeMediaPreview) {
         room.messages[existingIndex] = {
           ...rec,
           serverSeq:existing.serverSeq || rec.serverSeq,
@@ -22081,8 +22139,9 @@ function replaceRenderedMessage(room, rec) {
 async function loadAttachmentRecord(room, msgId) {
   const index = room.messages.findIndex(message => message.id === msgId);
   const current = index >= 0 ? room.messages[index] : null;
-  const hasEncryptedNativePreview = current?.kind === 'file' && current.nativeMediaPreview
-    && current.isImage && !current.base64;
+  const hasEncryptedNativePreview = current?.nativeMediaPreview && (
+    (current.kind === 'file' && current.isImage && !current.base64)
+    || (current.kind === 'album' && Array.isArray(current.images)));
   if (!current || (!['attachment-loading', 'attachment-unavailable'].includes(current.kind) && !hasEncryptedNativePreview)
       || !current.encryptedAttachmentRef || current.attachmentRetrying) return null;
   current.attachmentRetrying = true;
@@ -23916,7 +23975,7 @@ function renderMessageRecord(room, rec, animate) {
     // separate image messages (see sendAlbumMessage/buildAlbumGridHtml).
     const albumCaptionHiddenByViewOnce = rec.viewOnce && !rec.isMe && !(rec.images || []).some(img => img.viewed);
     const albumCaptionHtml = rec.caption && !albumCaptionHiddenByViewOnce ? `<div class="msg-caption-text">${linkifyHtml(rec.caption)}</div>` : '';
-    contentHtml = `<div class="msg-media-wrap${albumCaptionHtml ? ' has-caption' : ''}">${buildAlbumGridHtml(rec)}${albumCaptionHtml}</div>`;
+    contentHtml = `<div class="msg-media-wrap${albumCaptionHtml ? ' has-caption' : ''}${rec.nativeMediaPreview ? ' native-media-preview' : ''}">${buildAlbumGridHtml(rec)}${albumCaptionHtml}</div>`;
   } else if (rec.kind === 'voice') {
     contentHtml = `<div class="msg-media-wrap">${buildVoicePlayerHtml(rec)}</div>`;
   } else if (rec.kind === 'gif') {

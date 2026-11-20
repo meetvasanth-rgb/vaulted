@@ -43,6 +43,7 @@ function makeSandbox({ cache = new Map(), fetchImpl } = {}) {
     activePrivateGroupId:null, groupReplyTo:null,
     redactDeletedReply:reply => { reply.text='Message deleted'; reply.deleted=true; },
     historyStoreClearRoom:code => { calls.clear.push(code); },
+    secureNativeClearConversation:code => { calls.clear.push(code); },
     fetch:async (...args) => { calls.fetch++; return fetchImpl(...args); },
   });
   vm.runInContext(fn('privateGroupCacheCode'), sandbox);
@@ -168,6 +169,14 @@ test('wiring: uploads are kept, deletes and leaving clean up, Storage names grou
   assert.match(extract(groups, 'pollPrivateGroup', 'async function'), /decodePrivateGroupBatch\(group, state, incomingRaw\)/);
   assert.match(client, /function storageLabelForCode\(code\)/);
   assert.match(client, /startsWith\('group:'\)/);
+});
+
+test('group photos restore an encrypted compact preview before the original hydrates', () => {
+  assert.match(groups, /function queuePrivateGroupNativePreview\(group, message\)[\s\S]*makeTinyThumbnail[\s\S]*secureNativeStoreCompactMessage/);
+  assert.match(groups, /async function restorePrivateGroupNativePreviews\(group\)[\s\S]*secureNativeLoadMessages[\s\S]*attachmentState:'native-preview'/);
+  assert.match(groups, /await restorePrivateGroupNativePreviews\(group\)/);
+  assert.match(groups, /\.group-msg \.attachment-loading, \.group-msg \.native-media-preview/);
+  assert.match(groups, /queuePrivateGroupNativePreview\(group, next\)/);
 });
 
 test('the service worker cache was bumped for this change', () => {

@@ -27,3 +27,7 @@ test('the web app removes the native cover only after its first real screen can 
   assert.match(main, /o\.classList\.contains\('leaving'\)/);
   assert.match(main, /launchCoverHandler\.postDelayed\(checkWebLaunchReady, 80L\)/);
 });
+
+test('Android inbox rows do not replay entrance motion during cache hydration', () => {
+  assert.match(client, /html\.vaultlix-native-android #s-vault-list\.ui-entering[\s\S]*animation:none!important/);
+});
