@@ -47,6 +47,16 @@ test('cold start can read recent encrypted native history on both platforms', ()
   assert.match(client, /async function restoreLocalHistory\(room\)[\s\S]*restoreSecureNativeHistory\(room\)/);
 });
 
+test('image thumbnails survive cold launch only inside encrypted native history', () => {
+  const store = client.match(/function secureNativeStoreMessage\(room, rec\)[\s\S]*?\n}/)[0];
+  assert.match(store, /nativeRecord = rec\.kind === 'file' && rec\.isImage/);
+  assert.match(store, /base64:'', nativeMediaPreview:true/);
+  assert.ok(store.indexOf('JSON.stringify(nativeRecord)') < store.indexOf('secureStoreMessage'));
+  assert.match(client, /existing\.kind === 'attachment-loading' && rec\.kind === 'file' && rec\.nativeMediaPreview/);
+  assert.match(client, /\.msg \.attachment-loading, \.msg \.native-media-preview/);
+  assert.match(client, /hasEncryptedNativePreview && restored\.kind === 'attachment-unavailable'/);
+});
+
 test('disappearing messages never enter the native plaintext-derived cache', () => {
   const eligibility = client.match(/function nativeMessageCacheEligible\(room, rec\)[\s\S]*?\n}/)[0];
   const context = {};

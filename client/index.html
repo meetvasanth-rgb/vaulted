@@ -5530,8 +5530,18 @@ function secureNativeStoreMessage(room, rec) {
       || rec.kind === 'attachment-unavailable' || rec.kind === 'attachment-loading'
       || !nativeMessageCacheEligible(room, rec)) return;
   if (rec.deleted || rec.replyData?.deleted || cacheRecordErased(room.code, rec.id) || pendingMessageErasures.has(JSON.stringify([room.code, rec.id])) || secureNativeCachedRecords.has(rec)) return;
+  // A full-resolution image is much too large for the synchronous native
+  // bridge, but its already-generated chat thumbnail is small. Keep a
+  // thumbnail-only record in SQLCipher so a cold launch can paint the photo
+  // immediately while the full E2E attachment is restored from the encrypted
+  // attachment cache behind it. The preview remains protected by the same
+  // per-message hardware-backed key as every other native history record.
+  const nativeRecord = rec.kind === 'file' && rec.isImage
+      && rec.encryptedAttachmentRef && safeMessageImagePreview(rec.imagePreview)
+    ? { ...rec, base64:'', nativeMediaPreview:true, pending:false, attachmentRetrying:false }
+    : rec;
   let plaintext;
-  try { plaintext = JSON.stringify(rec); } catch (e) { return; }
+  try { plaintext = JSON.stringify(nativeRecord); } catch (e) { return; }
   // Android's JavaScript bridge is synchronous. Passing a multi-megabyte
   // photo/video through it duplicates the media in Java, SQLCipher and the
   // JS heap while also freezing touch input. Cache compact history only;
@@ -5606,7 +5616,25 @@ async function restoreSecureNativeHistory(room) {
       continue;
     }
     room.seenMsgIds.add(rec.id);
-    if (room.messages.some(existing => existing.id === rec.id)) continue;
+    const existingIndex = room.messages.findIndex(existing => existing.id === rec.id);
+    if (existingIndex >= 0) {
+      const existing = room.messages[existingIndex];
+      // IndexedDB restores the E2E attachment reference as a loading record
+      // first. Replace only that placeholder with the encrypted native
+      // thumbnail; text and already-hydrated media always win.
+      if (existing.kind === 'attachment-loading' && rec.kind === 'file' && rec.nativeMediaPreview) {
+        room.messages[existingIndex] = {
+          ...rec,
+          serverSeq:existing.serverSeq || rec.serverSeq,
+          receiptState:existing.receiptState || rec.receiptState,
+          reactionMine:existing.reactionMine || rec.reactionMine,
+          reactionTheirs:existing.reactionTheirs || rec.reactionTheirs,
+          deleteAt:existing.deleteAt || rec.deleteAt,
+          timerStarted:existing.timerStarted || rec.timerStarted,
+        };
+      }
+      continue;
+    }
     room.messages.push(rec);
     const seq = Number(rec.serverSeq) || 0;
     if (seq > 0 && !(seq >= room.historyOldestSeq)) room.historyOldestSeq = seq;
@@ -21964,6 +21992,15 @@ function queueMessageImagePreview(target) {
     if (preview) {
       target.imagePreview = preview;
       paintMessageImagePreview(target);
+      // Legacy attachments did not carry a sender-generated thumbnail. Once
+      // this device makes one, retain the compact preview in encrypted native
+      // storage so the next cold launch has no grey loading flash.
+      for (const room of rooms.values()) {
+        if (!room.messages.includes(target)) continue;
+        secureNativeCachedRecords.delete(target);
+        secureNativeStoreMessage(room, target);
+        break;
+      }
     }
   }).catch(() => {}).finally(() => pendingMessageImagePreviews.delete(target));
 }
@@ -22044,7 +22081,9 @@ function replaceRenderedMessage(room, rec) {
 async function loadAttachmentRecord(room, msgId) {
   const index = room.messages.findIndex(message => message.id === msgId);
   const current = index >= 0 ? room.messages[index] : null;
-  if (!current || !['attachment-loading', 'attachment-unavailable'].includes(current.kind)
+  const hasEncryptedNativePreview = current?.kind === 'file' && current.nativeMediaPreview
+    && current.isImage && !current.base64;
+  if (!current || (!['attachment-loading', 'attachment-unavailable'].includes(current.kind) && !hasEncryptedNativePreview)
       || !current.encryptedAttachmentRef || current.attachmentRetrying) return null;
   current.attachmentRetrying = true;
   const showProgress = (received, total) => {
@@ -22062,6 +22101,10 @@ async function loadAttachmentRecord(room, msgId) {
   if (nowIndex < 0 || room.messages[nowIndex] !== current) return null; // deleted or replaced meanwhile
   // No conversation key yet: leave the placeholder; the pending-decrypt replay will fill it in.
   if (!restored || restored.pending) return null;
+  // A valid encrypted thumbnail is still useful offline. If silent hydration
+  // cannot reach/decrypt the original, leave that preview in place and retry
+  // on a later open instead of replacing it with an error card.
+  if (hasEncryptedNativePreview && restored.kind === 'attachment-unavailable') return null;
   restored.isMe = current.isMe;
   restored.receiptState = current.receiptState;
   restored.reactionMine = current.reactionMine;
@@ -22080,7 +22123,7 @@ async function loadAttachmentRecord(room, msgId) {
 
 function scheduleAttachmentLoads(body, room) {
   if (attachmentLoadObserver) attachmentLoadObserver.disconnect();
-  const placeholders = [...body.querySelectorAll('.msg .attachment-loading')];
+  const placeholders = [...body.querySelectorAll('.msg .attachment-loading, .msg .native-media-preview')];
   if (!placeholders.length) return;
   const request = node => {
     const msgId = node.closest('.msg')?.dataset.msgId;
@@ -23823,8 +23866,9 @@ function renderMessageRecord(room, rec, animate) {
     } else if (rec.isImage) {
       const badge = rec.viewOnce ? `<div class="msg-viewonce-badge">👁 View once${rec.isMe ? '' : ' · Opened'}</div>` : '';
       const safeSrc = safeMessageImagePreview(rec.imagePreview);
+      const nativePreviewClass = rec.nativeMediaPreview && !rec.base64 ? ' native-media-preview' : '';
       mediaHtml = safeSrc
-        ? `${badge}<img class="msg-image" src="${safeSrc}" alt="${escHtml(rec.fileName)}" loading="lazy" decoding="async" onclick="handleImageTap(this.src, '${rec.id}')" oncontextmenu="return false" draggable="false"/>`
+        ? `${badge}<img class="msg-image${nativePreviewClass}" src="${safeSrc}" alt="${escHtml(rec.fileName)}" loading="lazy" decoding="async" onclick="handleImageTap(this.src, '${rec.id}')" oncontextmenu="return false" draggable="false"/>`
         : `${badge}<div class="msg-image-preview-loading" data-image-preview-msg="${escHtml(rec.id)}" role="status">Opening encrypted image…</div>`;
     } else if (isPdfAttachment(rec.mime, rec.fileName)) {
       const thumbnail = safeImageDataUri('image/jpeg', rec.pdfPreview);
