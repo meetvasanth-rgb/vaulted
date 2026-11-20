@@ -530,6 +530,9 @@ button.vault-call-btn:focus-visible{outline:2px solid #8D3C56;outline-offset:2px
 .typing-indicator.show{display:flex}
 .chat-restore-pending{width:100%;min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;border:0;background:transparent;color:#8A747C;font:600 12px/1.4 Inter,sans-serif;letter-spacing:.01em}
 .chat-restore-pending .typing-indicator{align-self:center;margin:0}
+.chat-restore-pending::before,.group-history-skeleton::before{content:"";display:block;width:min(78%,300px);height:230px;border-radius:20px;background:linear-gradient(110deg,#eee7e9 8%,#faf7f8 18%,#eee7e9 33%);background-size:200% 100%;animation:imagePreviewPulse 1.6s linear infinite;opacity:.7;clip-path:polygon(0 0,75% 0,75% 20%,0 20%,0 27%,100% 27%,100% 49%,20% 49%,20% 56%,85% 56%,85% 100%,0 100%)}
+.group-history-skeleton{min-height:55vh;display:flex;align-items:center;justify-content:center}
+@media(prefers-reduced-motion:reduce){.chat-restore-pending::before,.group-history-skeleton::before{animation:none}}
 .t-dot{width:5px;height:5px;border-radius:50%;background:#AAA;animation:typing-bounce .9s infinite}
 .t-dot:nth-child(2){animation-delay:.15s}.t-dot:nth-child(3){animation-delay:.3s}
 @keyframes typing-bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
@@ -5553,7 +5556,10 @@ function queueSecureNativeMediaPreview(room, rec) {
   secureNativePreviewJobs.add(key);
   Promise.resolve().then(async () => {
     let nativeRecord = null;
-    if (rec.kind === 'file' && rec.isImage && rec.encryptedAttachmentRef) {
+    if (rec.kind === 'file' && String(rec.mime || '').startsWith('video/') && rec.encryptedAttachmentRef) {
+      const videoThumb = rec.videoThumb ? await makeTinyThumbnail(rec.videoThumb, 'image/jpeg', 320, 0.64) : null;
+      if (videoThumb) nativeRecord = { ...rec, base64:'', videoThumb, nativeMediaPreview:true, pending:false, attachmentRetrying:false };
+    } else if (rec.kind === 'file' && rec.isImage && rec.encryptedAttachmentRef) {
       const hasPreview = !!safeMessageImagePreview(rec.imagePreview);
       const imagePreview = await makeTinyThumbnail(hasPreview ? rec.imagePreview : rec.base64,
         hasPreview ? 'image/jpeg' : rec.mime, 320, 0.64);
@@ -5598,7 +5604,7 @@ function secureNativeStoreMessage(room, rec) {
       && rec.encryptedAttachmentRef && safeMessageImagePreview(rec.imagePreview)
     ? { ...rec, base64:'', nativeMediaPreview:true, pending:false, attachmentRetrying:false }
     : rec;
-  if (rec.kind === 'album' && rec.encryptedAttachmentRef) {
+  if ((rec.kind === 'album' || (rec.kind === 'file' && String(rec.mime || '').startsWith('video/'))) && rec.encryptedAttachmentRef) {
     // Do not stringify the full album merely to discover it is too large for
     // the native bridge; build its compact encrypted tile record directly.
     queueSecureNativeMediaPreview(room, rec);
@@ -22141,7 +22147,7 @@ async function loadAttachmentRecord(room, msgId) {
   const index = room.messages.findIndex(message => message.id === msgId);
   const current = index >= 0 ? room.messages[index] : null;
   const hasEncryptedNativePreview = current?.nativeMediaPreview && (
-    (current.kind === 'file' && current.isImage && !current.base64)
+    (current.kind === 'file' && !current.base64 && (current.isImage || String(current.mime || '').startsWith('video/')))
     || (current.kind === 'album' && Array.isArray(current.images)));
   if (!current || (!['attachment-loading', 'attachment-unavailable'].includes(current.kind) && !hasEncryptedNativePreview)
       || !current.encryptedAttachmentRef || current.attachmentRetrying) return null;
@@ -23406,12 +23412,12 @@ function buildAlbumGridHtml(rec) {
     // URL from decrypted peer data or a restored record.
     const localSrc = rec.pending && rec.isMe && String(img.localPreviewUrl || '').startsWith('blob:') ? img.localPreviewUrl : null;
     const generatedPreview = isVideo ? safeImageDataUri('image/jpeg', img.videoThumb) : safeMessageImagePreview(img.imagePreview);
-    const safeSrc = hidden ? null : (generatedPreview || localSrc);
+    const safeSrc = hidden ? null : (generatedPreview || (isVideo ? null : localSrc));
     const inner = hidden
       ? `<div class="msg-album-viewonce"><svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/></svg></div>`
       : (safeSrc
           ? (isVideo
-              ? (localSrc
+              ? (!generatedPreview && localSrc
                   ? `<video class="msg-album-video-local" src="${safeSrc}" muted playsinline preload="metadata"></video><span class="msg-album-video-play">▶</span>`
                   : `<img class="msg-album-video-thumb" src="${safeSrc}" alt="Video preview" loading="lazy" decoding="async" draggable="false"/><span class="msg-album-video-play">▶</span>`)
               : `<img class="msg-image" src="${safeSrc}" alt="" loading="lazy" decoding="async" draggable="false"/>`)
@@ -23717,10 +23723,14 @@ function closeVideoAttachmentViewer() {
   overlay?.remove();
 }
 
-function handleVideoTap(msgId) {
+async function handleVideoTap(msgId) {
   if (wasJustLongPressed()) return;
   if (selectMode) { toggleMessageSelection(msgId); return; }
-  const rec = findMessageRec(msgId); if (!rec || !String(rec.mime || '').startsWith('video/')) return;
+  let rec = findMessageRec(msgId); if (!rec || !String(rec.mime || '').startsWith('video/')) return;
+  if (!rec.base64 && rec.nativeMediaPreview) {
+    rec = await loadAttachmentRecord(getActiveRoom(), msgId).catch(() => null);
+    if (!rec?.base64) return;
+  }
   openVideoAttachmentViewer(rec.mime, rec.base64, rec.fileName);
 }
 
@@ -23913,7 +23923,7 @@ function renderMessageRecord(room, rec, animate) {
     let mediaHtml;
     const isVideo = String(rec.mime || '').startsWith('video/');
     if (isVideo) {
-      mediaHtml = buildVideoAttachmentHtml({ id:rec.id, name:rec.fileName, thumb:rec.videoThumb, pending:!!rec.pending, preparing:!!rec.preparing });
+      mediaHtml = `<div class="${rec.nativeMediaPreview && !rec.base64 ? 'native-media-preview' : ''}">${buildVideoAttachmentHtml({ id:rec.id, name:rec.fileName, thumb:rec.videoThumb, pending:!!rec.pending, preparing:!!rec.preparing })}</div>`;
     } else if (rec.isImage && rec.viewOnce && !rec.isMe && !rec.viewed) {
       // Hidden by default — this is the entire point of view-once: unlike
       // the regular disappearing timer, which leaves an image sitting
@@ -29041,7 +29051,17 @@ async function sendSelectedFilesToRoom(room, files, options = {}) {
   let currentVideoController = null;
   const selectedMediaFiles = valid.filter(file => String(file.type || '').startsWith('video/')
     || (!imageAsDocument && String(file.type || '').startsWith('image/')));
-  let pendingAlbum = selectedMediaFiles.length > 1 ? beginPendingMediaAlbum(room, selectedMediaFiles) : null;
+  let pendingAlbum = selectedMediaFiles.length > 1 || selectedMediaFiles.some(file => file.type.startsWith('video/'))
+    ? beginPendingMediaAlbum(room, selectedMediaFiles) : null;
+  // Start decoding posters immediately, alongside compression. Every video
+  // in a selection gets a chance to show its preview before its upload turn.
+  const earlyVideoPreviews = new Map(selectedMediaFiles.filter(file => file.type.startsWith('video/')).map(file => {
+    const preview = createVideoAttachmentThumbnail(file).then(videoThumb => {
+      if (videoThumb) pendingAlbum?.updatePreview(file, { videoThumb });
+      return videoThumb;
+    }).catch(() => null);
+    return [file, preview];
+  }));
   try {
     for (let fileIndex = 0; fileIndex < valid.length; fileIndex++) {
       const file = valid[fileIndex];
@@ -29078,14 +29098,15 @@ async function sendSelectedFilesToRoom(room, files, options = {}) {
           ? { name:compressedVideo.name, type:compressedVideo.mime }
           : file;
         const base64 = compressedVideo ? compressedVideo.base64 : await fileToBase64(file);
-        let videoThumb = null;
+        let videoThumb = safeImageDataUri('image/jpeg', compressedVideo?.videoThumb) ? compressedVideo.videoThumb
+          : isVideo ? await earlyVideoPreviews.get(file) : null;
         if (isVideo) {
           // Android pickers can expose a source that the native compressor
           // can read but the WebView video element cannot decode reliably.
           // Build the poster from the final MP4 bytes instead: this is the
           // exact file the recipient will play and avoids black/play-icon
           // frames taken from the original picker wrapper.
-          videoThumb = await createVideoAttachmentThumbnailFromBase64(
+          videoThumb = videoThumb || await createVideoAttachmentThumbnailFromBase64(
             base64, preparedFile.type || 'video/mp4'
           );
           // Plain browsers can still send formats that remain easier to
@@ -29115,7 +29136,7 @@ async function sendSelectedFilesToRoom(room, files, options = {}) {
     return;
   }
 
-  if (media.length < 2 && pendingAlbum) {
+  if (media.length < 2 && pendingAlbum && media[0]?.kind !== 'video') {
     pendingAlbum.discard();
     pendingAlbum = null;
   }
@@ -29145,6 +29166,7 @@ async function sendSelectedFilesToRoom(room, files, options = {}) {
     toast('Could not send media. Please try again.');
   } finally {
     sendProgress?.close();
+    if (media.length === 1) pendingAlbum?.discard();
   }
 }
 
@@ -30723,7 +30745,7 @@ async function compressVideoFile(file, controller = null) {
   if (fitsAfterCompression) {
     const baseName = String(file.name || 'vaultlix-video').replace(/\.[^.]+$/, '').slice(0, 120) || 'vaultlix-video';
     const outputMime = result?.mime === 'video/mp4' ? result.mime : 'video/mp4';
-    return { base64: compressed, mime: outputMime, name: `${baseName}.mp4` };
+    return { base64: compressed, mime: outputMime, name: `${baseName}.mp4`, videoThumb:result.videoThumb || null };
   }
   if (!mustCompress) return { base64: await fileToBase64(file), mime: file.type, name: file.name };
   return null;

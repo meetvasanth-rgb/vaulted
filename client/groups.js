@@ -255,11 +255,16 @@ const privateGroupNativePreviewJobs = new Set();
 function queuePrivateGroupNativePreview(group, message) {
   const key = `${group?.id || ''}:${message?.id || ''}`;
   if (!isNativeApp() || !group?.id || !message?.id || !message.attachment || privateGroupNativePreviewJobs.has(key)) return;
-  if (!['group-image','group-album'].includes(message.attachment.type)) return;
+  const isVideo = message.attachment.type === 'group-file' && String(message.attachment.mime || '').startsWith('video/');
+  if (!['group-image','group-album'].includes(message.attachment.type) && !isVideo) return;
   privateGroupNativePreviewJobs.add(key);
   Promise.resolve().then(async () => {
     let attachment;
-    if (message.attachment.type === 'group-image') {
+    if (isVideo) {
+      const videoThumb = message.attachment.videoThumb ? await makeTinyThumbnail(message.attachment.videoThumb, 'image/jpeg', 320, 0.64) : null;
+      if (!videoThumb) return;
+      attachment = { ...message.attachment, data:'', videoThumb, previewOnly:true };
+    } else if (message.attachment.type === 'group-image') {
       const data = await makeTinyThumbnail(message.attachment.data, message.attachment.mime, 320, 0.64);
       if (!data) return;
       attachment = { ...message.attachment, data, mime:'image/jpeg', previewOnly:true };
@@ -932,7 +937,7 @@ function renderPrivateGroupMessages(group, { keepDistanceFromBottom = null } = {
     return;
   }
   if (!group.historyHydrated) {
-    body.innerHTML = '<div class="group-chat-empty"></div>';
+    body.innerHTML = '<div class="group-history-skeleton" role="status" aria-label="Opening conversation"></div>';
     return;
   }
   const deleted = privateGroupDeletedIds(group.messages || [], group.hiddenIds || []);
@@ -1431,10 +1436,14 @@ function openPrivateGroupImage(messageId) {
   viewImage(src, { zIndex:PRIVATE_GROUP_VIEWER_Z, info:group && message ? privateGroupViewerInfo(group, message) : undefined });
 }
 
-function openPrivateGroupVideo(messageId) {
+async function openPrivateGroupVideo(messageId) {
   if (wasJustLongPressed()) return;
   const group = privateGroups.get(activePrivateGroupId);
-  const attachment = group?.messages?.find(message => message.id === messageId)?.attachment;
+  let attachment = group?.messages?.find(message => message.id === messageId)?.attachment;
+  if (!attachment?.data && attachment?.previewOnly) {
+    const restored = await loadPrivateGroupAttachment(group.id, messageId).catch(() => null);
+    attachment = restored?.attachment || group.messages.find(message => message.id === messageId)?.attachment;
+  }
   if (!attachment?.data || !String(attachment.mime || '').startsWith('video/')) { toast('Could not open video'); return; }
   openVideoAttachmentViewer(attachment.mime, attachment.data, attachment.name || 'Video');
 }
@@ -1528,7 +1537,7 @@ async function decodePrivateGroupAttachment(group, state, message, attachmentId,
         && typeof item?.data === 'string' && isValidMediaBase64(item.data))
       && payload.items.reduce((size, item) => size + item.data.length, 0) <= 36 * 1024 * 1024;
     const validSingle = ['group-image','group-file','group-voice'].includes(payload?.type)
-      && typeof payload.data === 'string' && payload.data.length <= 36 * 1024 * 1024;
+      && typeof payload.data === 'string' && payload.data.length <= 72 * 1024 * 1024;
     if (!validAlbum && !validSingle) {
       throw new Error('Invalid group attachment');
     }

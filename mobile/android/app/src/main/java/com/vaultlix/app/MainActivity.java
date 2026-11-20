@@ -1297,10 +1297,15 @@ public class MainActivity extends BridgeActivity {
         public boolean supportsChunkedVideoCompression() { return true; }
 
         private void emitVideoCompression(String requestId, byte[] output) {
+            emitVideoCompression(requestId, output, null);
+        }
+
+        private void emitVideoCompression(String requestId, byte[] output, String thumbnail) {
             mediaCompressionExecutor.execute(() -> {
                 String detail = "{requestId:" + JSONObject.quote(requestId) + ",ok:" + (output != null);
                 if (output != null) {
                     detail += ",mime:'video/mp4',base64:" + JSONObject.quote(Base64.encodeToString(output, Base64.NO_WRAP));
+                    if (thumbnail != null) detail += ",videoThumb:" + JSONObject.quote(thumbnail);
                 }
                 detail += "}";
                 String script = "window.dispatchEvent(new CustomEvent('vaultlix:video-compression-result',{detail:" + detail + "}));";
@@ -1437,8 +1442,20 @@ public class MainActivity extends BridgeActivity {
                                     try (FileInputStream input = new FileInputStream(outputFile)) {
                                         byte[] bytes = input.readAllBytes();
                                         if (bytes.length > 0 && bytes.length < originalSize && bytes.length <= MAX_COMPRESSED_VIDEO_BYTES) {
+                                            String thumbnail = null;
+                                            try (android.media.MediaMetadataRetriever retriever = new android.media.MediaMetadataRetriever()) {
+                                                retriever.setDataSource(outputFile.getAbsolutePath());
+                                                android.graphics.Bitmap frame = retriever.getScaledFrameAtTime(300_000,
+                                                        android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 480, 480);
+                                                if (frame != null) {
+                                                    try (ByteArrayOutputStream poster = new ByteArrayOutputStream()) {
+                                                        frame.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, poster);
+                                                        thumbnail = Base64.encodeToString(poster.toByteArray(), Base64.NO_WRAP);
+                                                    } finally { frame.recycle(); }
+                                                }
+                                            } catch (Exception ignored) {}
                                             inputFile.delete(); outputFile.delete();
-                                            emitVideoCompression(requestId, bytes);
+                                            emitVideoCompression(requestId, bytes, thumbnail);
                                         } else {
                                             retryOrFailVideoCompression(requestId, inputFile, outputFile, originalSize, tier);
                                         }
