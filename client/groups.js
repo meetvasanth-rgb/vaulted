@@ -309,6 +309,7 @@ async function restorePrivateGroupNativePreviews(group) {
   for (const value of values || []) {
     let rec;
     try { rec = typeof value === 'string' ? JSON.parse(value) : value; } catch (_) { continue; }
+    if (rec?.kind === 'conversation-layout') { restoreConversationLayout(privateGroupCacheCode(group.id), rec); continue; }
     if (rec?.kind === 'group-media-preview' && rec.nativeMediaPreview && rec.attachment) previews.set(rec.id, rec);
   }
   for (let index = 0; index < (group.messages || []).length; index++) {
@@ -681,9 +682,11 @@ async function createPrivateGroup() {
 function scrollPrivateGroupToLatest() {
   const body = document.getElementById('group-chat-body');
   if (!body) return;
-  body.scrollTop = body.scrollHeight;
+  const code = privateGroupCacheCode(activePrivateGroupId);
+  if (!restoreConversationViewport(body, code)) body.scrollTop = body.scrollHeight;
   requestAnimationFrame(() => {
-    if (activePrivateGroupId && document.getElementById('group-chat')?.classList.contains('open')) body.scrollTop = body.scrollHeight;
+    if (activePrivateGroupId && privateGroupCacheCode(activePrivateGroupId) === code && document.getElementById('group-chat')?.classList.contains('open')
+        && !restoreConversationViewport(body, code)) body.scrollTop = body.scrollHeight;
   });
 }
 
@@ -732,6 +735,7 @@ async function openPrivateGroup(id) {
 }
 
 function closePrivateGroup() {
+  captureConversationViewport(document.getElementById('group-chat-body'), privateGroupCacheCode(activePrivateGroupId));
   privateGroupOpenRequestId++;
   openingPrivateGroupId = null;
   clearInterval(groupPollTimer); groupPollTimer = null;
@@ -937,6 +941,8 @@ function requestPrivateGroupVoiceTranscript(messageId) {
 
 function renderPrivateGroupMessages(group, { keepDistanceFromBottom = null } = {}) {
   const body = document.getElementById('group-chat-body'); if (!body) return;
+  const layoutCode = privateGroupCacheCode(group.id);
+  captureConversationViewport(body, layoutCode);
   const state = loadAccountState();
   if (!hasPrivateGroupKeys(group)) {
     body.innerHTML = '<div class="group-chat-empty">This device does not have the encryption key for this group.<br>Your messages are safe and unchanged for the other members. Reopen Vaultlix to try restoring the key from your encrypted backup.</div>';
@@ -968,8 +974,10 @@ function renderPrivateGroupMessages(group, { keepDistanceFromBottom = null } = {
   for (const row of body.querySelectorAll('[data-group-msg-id]')) { wirePrivateGroupMessage(row); wirePrivateGroupAttachmentRetry(row, group); }
   if (groupSelectMode) refreshPrivateGroupSelection();
   // Older messages added above the reader must not move what they are looking at.
+  applyConversationMediaLayout(body, layoutCode);
   body.scrollTop = typeof keepDistanceFromBottom === 'number'
     ? Math.max(0, body.scrollHeight - body.clientHeight - keepDistanceFromBottom) : body.scrollHeight;
+  if (keepDistanceFromBottom === null) restoreConversationViewport(body, layoutCode);
   fillPrivateGroupPdfPreviews(group.id);
   schedulePrivateGroupAttachmentLoads(body, group);
 }
@@ -1664,6 +1672,7 @@ async function replacePrivateGroupRow(group, message) {
   holder.innerHTML = privateGroupRowHtml(group, message, reactions, state);
   const row = holder.firstElementChild;
   if (!row) return;
+  applyConversationMediaLayout(row, privateGroupCacheCode(group.id));
   if (!await decodeReplacementImages(row) || !old.isConnected || group.id !== activePrivateGroupId
       || !group.messages.includes(message)) return;
   const previousTop = body.scrollTop;

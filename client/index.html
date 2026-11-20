@@ -5665,6 +5665,7 @@ function parseSecureNativeHistory(room, values) {
   for (const value of values || []) {
     let rec;
     try { rec = typeof value === 'string' ? JSON.parse(value) : value; } catch (_) { continue; }
+    if (rec?.kind === 'conversation-layout') { restoreConversationLayout(room.code, rec); continue; }
     if (!rec || typeof rec !== 'object' || typeof rec.id !== 'string' || !rec.id
         || rec.deleted || rec.replyData?.deleted || cacheRecordErased(room.code, rec.id)
         || ['sys', 'blocked', 'attachment-loading', 'attachment-unavailable'].includes(rec.kind)
@@ -5830,6 +5831,12 @@ async function retryPendingMessageErasures() {
 }
 function secureNativeDeleteMessage(conversationId, messageId) {
   if (!conversationId || !messageId) return;
+  const layout = conversationLayouts.get(conversationId);
+  if (layout) {
+    for (const key of Object.keys(layout.media)) if (key.startsWith(`${messageId}:`)) delete layout.media[key];
+    if (layout.scroll?.id === messageId) layout.scroll = null;
+    persistConversationLayout(conversationId);
+  }
   excludeErasedCacheRecord(conversationId, messageId);
   pendingMessageErasures.set(JSON.stringify([conversationId, messageId]), [conversationId, messageId]);
   saveMessageEraseJournal();
@@ -5914,6 +5921,9 @@ function cancelAndScrubConversationCache(room) {
 }
 function secureNativeClearConversation(conversationId) {
   if (!conversationId) return;
+  clearTimeout(conversationLayoutTimers.get(conversationId));
+  conversationLayoutTimers.delete(conversationId);
+  conversationLayouts.delete(conversationId);
   historyStoreClearRoom(conversationId);
   try {
     if (typeof window.VaultlixAndroid?.secureClearConversation === 'function') {
@@ -11767,6 +11777,7 @@ function showScreen(id) {
   closeConversationAchievements();
   const leavingChat = id !== 's-chat' && document.getElementById('s-chat')?.classList.contains('active');
   if (leavingChat) {
+    captureConversationViewport(document.getElementById('chat-body'), activeRoomCode);
     // Finish the old keyboard session before hiding the conversation. Leaving
     // a focused textarea inside display:none makes WKWebView dismiss it late;
     // a quick tap on another inbox row can then reopen that same responder
@@ -21791,6 +21802,7 @@ function prepareChatBodyForFirstPaint() {
 }
 
 function setActiveRoom(code, { deferMessages = false } = {}) {
+  captureConversationViewport(document.getElementById('chat-body'), activeRoomCode);
   const room = rooms.get(code);
   if (!room) return;
   if (isChatConcealed(code)) return; // a hidden chat only opens once unlocked
@@ -22151,11 +22163,13 @@ async function replaceRenderedMessage(room, rec) {
   if (!body || room.code !== activeRoomCode || !document.getElementById('s-chat')?.classList.contains('active')) return;
   const old = body.querySelector(`.msg[data-msg-id="${CSS.escape(rec.id)}"]`);
   if (!old) return;
+  const originalTop = body.scrollTop;
   const div = renderMessageRecord(room, rec, false);
   if (!div || div === old) return;
   // Rendering appends synchronously. Detach before yielding, keeping the
   // existing thumbnail in place until every replacement image has decoded.
   div.remove();
+  body.scrollTop = originalTop;
   if (!await decodeReplacementImages(div) || !old.isConnected
       || room.code !== activeRoomCode || !room.messages.includes(rec)) return;
   const previousTop = body.scrollTop;
@@ -22251,6 +22265,118 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) retr
 // and put it back there afterwards, so a redraw never throws them to the newest
 // message. Someone at (or near) the bottom simply stays at the bottom.
 const CHAT_NEAR_BOTTOM_PX = 96;
+const conversationLayouts = new Map();
+const conversationLayoutTimers = new Map();
+
+function restoreConversationLayout(code, record) {
+  if (record?.kind === 'conversation-layout') {
+    const current = conversationLayouts.get(code);
+    conversationLayouts.set(code, { scroll:current?.scroll || record.scroll || null,
+      media:{ ...(record.media || {}), ...(current?.media || {}) } });
+  }
+}
+
+function conversationLayout(code) {
+  if (!conversationLayouts.has(code)) conversationLayouts.set(code, { scroll:null, media:{} });
+  return conversationLayouts.get(code);
+}
+
+function persistConversationLayout(code) {
+  clearTimeout(conversationLayoutTimers.get(code));
+  const accountId = loadAccountState()?.accountId;
+  conversationLayoutTimers.set(code, setTimeout(() => {
+    conversationLayoutTimers.delete(code);
+    if (!accountId || loadAccountState()?.accountId !== accountId) return;
+    const layout = conversationLayouts.get(code);
+    if (layout) secureNativeStoreCompactMessage(code, '__conversation_layout_v1__', {
+      id:'__conversation_layout_v1__', kind:'conversation-layout', scroll:layout.scroll,
+      media:Object.fromEntries(Object.entries(layout.media).slice(-150)),
+    });
+  }, 300));
+}
+
+function captureConversationViewport(body, code) {
+  if (!body || !code || !body.clientHeight || body.dataset.layoutCode !== code) return;
+  if (Number(rooms.get(code)?.deleteTimerSeconds) > 0) return;
+  const top = body.getBoundingClientRect().top;
+  const rows = [...body.querySelectorAll('[data-msg-id], [data-group-msg-id]')];
+  if (!rows.length) return;
+  const row = rows.find(node => node.getBoundingClientRect().bottom > top + 1);
+  conversationLayout(code).scroll = {
+    bottom:body.scrollHeight - body.scrollTop - body.clientHeight <= CHAT_NEAR_BOTTOM_PX,
+    id:row?.dataset.msgId || row?.dataset.groupMsgId || '',
+    offset:row ? row.getBoundingClientRect().top - top : 0,
+    distance:Math.max(0, body.scrollHeight - body.scrollTop - body.clientHeight),
+  };
+  persistConversationLayout(code);
+}
+
+function restoreConversationViewport(body, code) {
+  const scroll = conversationLayouts.get(code)?.scroll;
+  if (!scroll || !body.clientHeight) return false;
+  if (scroll.bottom) { body.scrollTop = body.scrollHeight; return true; }
+  const row = [...body.querySelectorAll('[data-msg-id], [data-group-msg-id]')]
+    .find(node => (node.dataset.msgId || node.dataset.groupMsgId) === scroll.id);
+  if (row) body.scrollTop += row.getBoundingClientRect().top - body.getBoundingClientRect().top - scroll.offset;
+  else body.scrollTop = Math.max(0, body.scrollHeight - body.clientHeight - (Number(scroll.distance) || 0));
+  return true;
+}
+
+function mediaLayoutKey(node) {
+  const row = node.closest('[data-msg-id], [data-group-msg-id]');
+  const id = row?.dataset.msgId || row?.dataset.groupMsgId;
+  const item = node.closest('[data-img-id]')?.dataset.imgId || '';
+  return id ? `${id}:${item}` : null;
+}
+
+function applyConversationMediaLayout(body, code) {
+  body.dataset.layoutCode = code;
+  if (Number(rooms.get(code)?.deleteTimerSeconds) > 0) return;
+  const layout = conversationLayout(code);
+  for (const image of body.querySelectorAll('img.msg-image, .msg-video-card img, img.msg-album-video-thumb')) {
+    const key = mediaLayoutKey(image);
+    if (!key) continue;
+    const record = rooms.get(code)?.messages.find(rec => key.startsWith(`${rec.id}:`));
+    if (record && (record.viewOnce || !nativeMessageCacheEligible(rooms.get(code), record))) continue;
+    const saved = layout.media[key];
+    if (saved?.width > 0 && saved?.height > 0) {
+      image.width = saved.width; image.height = saved.height;
+      if (image.matches('.msg-image') && !image.closest('.msg-album-tile')) {
+        image.style.width = `min(280px,68vw,${280 * saved.width / saved.height}px)`;
+        image.style.height = 'auto'; image.style.aspectRatio = `${saved.width}/${saved.height}`;
+      }
+    }
+    const remember = () => {
+      if (!image.naturalWidth || !image.naturalHeight) return;
+      const previous = layout.media[key];
+      if (previous?.width === image.naturalWidth && previous?.height === image.naturalHeight) return;
+      layout.media[key] = { width:image.naturalWidth, height:image.naturalHeight };
+      if (image.closest('.msg-video-card')) layout.media[key].video = true;
+      persistConversationLayout(code);
+    };
+    if (image.complete) remember(); else image.addEventListener('load', remember, { once:true });
+  }
+  for (const placeholder of body.querySelectorAll('.attachment-loading, .msg-image-preview-loading')) {
+    const saved = layout.media[mediaLayoutKey(placeholder)];
+    if (!saved?.width || !saved?.height || placeholder.closest('.msg-album-tile')) continue;
+    const ratio = saved.video ? 1.6 : saved.width / saved.height;
+    placeholder.style.width = `min(280px,68vw,${280 * ratio}px)`;
+    placeholder.style.height = 'auto';
+    placeholder.style.aspectRatio = String(ratio);
+  }
+}
+
+document.addEventListener('scroll', event => {
+  const body = event.target;
+  if (body?.id === 'chat-body' || body?.id === 'group-chat-body') captureConversationViewport(body, body.dataset.layoutCode);
+}, true);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) return;
+  for (const id of ['chat-body','group-chat-body']) {
+    const body = document.getElementById(id);
+    if (body) captureConversationViewport(body, body.dataset.layoutCode);
+  }
+});
 
 function captureChatScrollAnchor(body) {
   const top = body.getBoundingClientRect().top;
@@ -22270,6 +22396,7 @@ function restoreChatScrollAnchor(body, anchor) {
 
 function renderChatBody(room, { keepDistanceFromBottom = null } = {}) {
   const body = document.getElementById('chat-body');
+  if (body.dataset.renderedRoom === room.code) captureConversationViewport(body, room.code);
   // Only when this same conversation is already on screen and the reader is not at the bottom.
   const readerAnchor = keepDistanceFromBottom === null && body.dataset.renderedRoom === room.code
     && body.scrollHeight - body.scrollTop - body.clientHeight > CHAT_NEAR_BOTTOM_PX
@@ -22303,11 +22430,12 @@ function renderChatBody(room, { keepDistanceFromBottom = null } = {}) {
   refreshDaySeparators(body, { stick:false });
   watchChatDaySeparators(body);
   body.dataset.renderedRoom = room.code;
+  applyConversationMediaLayout(body, room.code);
   const keepPlace = typeof keepDistanceFromBottom === 'number';
   // Messages added above the reader must not move what they are looking at:
   // the distance from the bottom stays the same when older ones are prepended.
   body.scrollTop = keepPlace ? Math.max(0, body.scrollHeight - body.clientHeight - keepDistanceFromBottom) : body.scrollHeight;
-  const keptReaderPlace = !keepPlace && readerAnchor ? restoreChatScrollAnchor(body, readerAnchor) : false;
+  const keptReaderPlace = !keepPlace && (readerAnchor ? restoreChatScrollAnchor(body, readerAnchor) : restoreConversationViewport(body, room.code));
   scheduleAttachmentLoads(body, room);
   scheduleVoiceMetadata(body, room);
   // Inbox navigation renders the conversation immediately before s-chat is
@@ -22315,7 +22443,7 @@ function renderChatBody(room, { keepDistanceFromBottom = null } = {}) {
   // frame, leaving the newest row (notably a missed call) below the viewport.
   // Re-apply after the screen transition has committed.
   if (!keepPlace && !keptReaderPlace) requestAnimationFrame(() => {
-    if (activeRoomCode === room.code) body.scrollTop = body.scrollHeight;
+    if (activeRoomCode === room.code && !restoreConversationViewport(body, room.code)) body.scrollTop = body.scrollHeight;
   });
   scheduleDeferredKlipyGifs(body);
   scheduleMessageImagePreviews(body, room);
@@ -24078,6 +24206,7 @@ function renderMessageRecord(room, rec, animate) {
   }
 
   wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : (rec.kind === 'gif' ? `GIF · ${rec.title || ''}` : ((rec.kind === 'album' || rec.kind === 'voice' || rec.kind === 'blocked' || rec.kind === 'attachment-unavailable') ? '' : rec.content)), rec.isMe, rec);
+  applyConversationMediaLayout(div, room.code);
   body.insertBefore(div, typing);
   body.scrollTop = body.scrollHeight;
   if (animate && rec.kind === 'voice') primeVoiceMetadata(rec);
