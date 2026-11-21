@@ -24455,7 +24455,9 @@ function handleReadReceipts(room, receipts) {
     if (seq && readAt && seq > room.lastReadReceiptSeq) room.lastReadReceiptSeq = seq;
     const rec = room.messages.find(m => m.id === msgId);
     if (!rec) continue;
+    const previousReceiptState = rec.receiptState;
     rec.deleteTimerSeconds = deleteTimerSeconds;
+    if (deliveredAt) rec.deliveredAt = deliveredAt;
     if (rec.isMe && (deliveredAt || readAt)) {
       const ticks = {};
       if (deliveredAt) ticks.deliveredAt = deliveredAt;
@@ -24479,6 +24481,12 @@ function handleReadReceipts(room, receipts) {
         const el = document.getElementById(`receipt-${msgId}`);
         if (el) { el.textContent = '✓✓'; el.classList.add('delivered'); }
       }
+    }
+    if (rec.isMe && rec.receiptState !== previousReceiptState) {
+      // The initial native snapshot can precede delivery. Replace that stale
+      // snapshot so an offline reopen also retains the confirmed ticks.
+      secureNativeCachedRecords.delete(rec);
+      scheduleSecureNativeHistoryCache(room, [rec]);
     }
   }
   if (room.messages.some(message => message.isMe && message.receiptState === 'delivered')) {
@@ -25266,6 +25274,9 @@ async function applyRestoredHistory(room, messages, nowTs, { confirmReads = true
       }
     }
     room.messages.sort((left, right) => (Number(left?.ts) || 0) - (Number(right?.ts) || 0));
+    // Receipt delta cursors may already be past these messages. Their own
+    // envelopes remain authoritative for delivery/read state on a cold open.
+    restoreOwnTicks(room, batch);
   };
 
   const inlineMessages = unseen.filter(msg => typeof msg.content !== 'string' || !msg.content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX));
@@ -25302,6 +25313,9 @@ async function applyRestoredHistory(room, messages, nowTs, { confirmReads = true
     }
   }
   room.messages.sort((left, right) => (Number(left?.ts) || 0) - (Number(right?.ts) || 0));
+  // Includes records already present in the native cache/seen set, as well
+  // as attachment placeholders that were not handled by the inline batch.
+  restoreOwnTicks(room, messages);
   // During a native cold restore, SQLCipher thumbnails are read immediately
   // after this IndexedDB envelope pass. Do not paint the temporary encrypted
   // attachment cards in between those two local reads: on Android that made a
@@ -25312,7 +25326,7 @@ async function applyRestoredHistory(room, messages, nowTs, { confirmReads = true
 // Delivered / read ticks that arrive with our own older messages.
 function restoreOwnTicks(room, messages) {
   handleReadReceipts(room, messages.filter(message => message.from === room.token && (message.deliveredAt || message.readAt))
-    .map(message => ({ msgId:message.id, deliveredAt:message.deliveredAt, readAt:message.readAt, deleteTimerSeconds:0 })));
+    .map(message => ({ msgId:message.id, deliveredAt:message.deliveredAt, readAt:message.readAt, deleteTimerSeconds:Number(message.deleteTimerSeconds) || 0 })));
 }
 
 const mediaPreviewBackfillQueue = [];
