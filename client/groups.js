@@ -1177,7 +1177,7 @@ async function sendPrivateGroupControl(payload, control) {
 
 async function sendPrivateGroupReaction(messageId, emoji) {
   const group = privateGroups.get(activePrivateGroupId); const state = loadAccountState();
-  if (!group || !state || !GROUP_REACTIONS.includes(emoji)) return;
+  if (!group || !state || !isSupportedMessageReaction(emoji)) return;
   // Tapping your own current reaction again clears it, as in a direct chat.
   const current = derivePrivateGroupView(group.messages || [], group.hiddenIds || []).reactions.get(messageId)?.get(state.accountId);
   const next = current === emoji ? '' : emoji;
@@ -1537,7 +1537,7 @@ async function decodePrivateGroupEnvelope(group, message) {
     return { decoded:{ ...message, control:{ type:'edit', target:message.editOf, text } } };
   }
   if (metadata?.type === 'group-reaction' && typeof metadata.target === 'string' && metadata.target.length <= 96) {
-    const emoji = GROUP_REACTIONS.includes(metadata.emoji) ? metadata.emoji : '';
+    const emoji = isSupportedMessageReaction(metadata.emoji) ? metadata.emoji : '';
     return { decoded:{ ...message, control:{ type:'reaction', target:metadata.target, emoji } } };
   }
   if (metadata?.type === 'group-delete' && typeof metadata.target === 'string' && metadata.target.length <= 96) {

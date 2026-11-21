@@ -45,7 +45,7 @@ test('long-press selects; a tap on text does nothing unless a selection is under
 });
 
 test('photos, videos and files still open on a tap, and toggle instead while selecting', () => {
-  for (const fn of ['handleImageTap', 'handleAlbumImageTap']) {
+  for (const fn of ['handleImageTap', 'handleAlbumItemTap']) {
     assert.match(extract(client, fn), /if \(selectMode\) \{ toggleMessageSelection\(msgId\); return; \}/, fn);
   }
   assert.match(groups, /if \(groupSelectMode\) \{ event\.preventDefault\(\); event\.stopPropagation\(\); togglePrivateGroupSelection\(id\); \}/);
@@ -95,7 +95,8 @@ test('a photo opens with a top bar (back, who, when, save, forward) and a bottom
   for (const marker of ['data-v="back"', 'data-v="save"', 'data-v="forward"', 'class="viewer-reply" data-v="reply"', 'data-v="react"']) assert.ok(chrome.includes(marker), marker);
   assert.match(chrome, /const preferred = \['❤️', '😂'\]/);
   assert.match(extract(client, 'handleImageTap'), /viewImage\(original \|\| src, context && !context\.rec\.viewOnce \? \{ info: viewerInfoForRec\(context\.room, context\.rec\) \} : undefined\)/);
-  assert.match(extract(client, 'handleAlbumImageTap'), /info: rec\.viewOnce \? undefined : viewerInfoForRec\(room, rec\)/);
+  assert.match(extract(client, 'handleAlbumImageTap'), /handleAlbumItemTap\(msgId, imgId\)/);
+  assert.match(extract(client, 'openAlbumMediaAt'), /info:rec\.viewOnce \? undefined : viewerInfoForRec\(room, rec\)/);
   assert.match(groups, /viewImage\(src, \{ zIndex:PRIVATE_GROUP_VIEWER_Z, info:group && message \? privateGroupViewerInfo\(group, message\) : undefined \}\)/);
   const view = extract(client, 'viewImage');
   assert.match(view, /if \(!effectiveHideDownload && !info\)/, 'the old corner Save button gives way to the bar');

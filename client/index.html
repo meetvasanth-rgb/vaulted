@@ -3352,6 +3352,21 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 .msg-reaction-bar button{width:40px;height:40px;padding:0;border:0;border-radius:50%;background:none;font-size:25px;line-height:1;display:grid;place-items:center;transition:transform .12s;-webkit-tap-highlight-color:transparent}
 .msg-reaction-bar button:active{transform:scale(1.28)}
 .msg-reaction-bar button.mine{background:#F3E6EA}
+.msg-reaction-bar .msg-reaction-more{background:#f4eef1;color:#682c43;font-size:29px;font-weight:400}
+.message-emoji-overlay{position:fixed;inset:0;z-index:10044;background:#0004;display:flex;align-items:flex-end;justify-content:center}
+.message-emoji-sheet{width:min(520px,100%);max-height:min(480px,72dvh,100%);display:flex;flex-direction:column;background:#fff;color:#271d25;border-radius:24px 24px 0 0;padding:14px 14px max(14px,env(safe-area-inset-bottom));box-sizing:border-box;box-shadow:0 -8px 36px #271d2520;animation:message-emoji-enter .18s ease-out}
+.message-emoji-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 2px 10px}
+.message-emoji-heading h2{font-size:18px;margin:0;font-weight:650}
+.message-emoji-close{width:40px;height:40px;border:0;border-radius:50%;background:#f4eef1;color:#682c43;font-size:26px}
+.message-emoji-tabs{display:flex;gap:6px;overflow-x:auto;flex-shrink:0;padding:0 0 12px;overscroll-behavior-x:contain}
+.message-emoji-tabs button{flex-shrink:0;padding:9px 12px;border:0;border-radius:18px;background:#f6f3f4;color:#63585e;font-size:13px;font-weight:600;white-space:nowrap}
+.message-emoji-tabs button[aria-pressed="true"]{background:#682c43;color:#fff}
+.message-emoji-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));overflow-y:auto;min-height:0;gap:5px;overscroll-behavior:contain;padding:2px}
+.message-emoji-grid button{min-width:0;min-height:44px;border:0;border-radius:12px;background:#fff;font-size:29px;line-height:1.3;padding:6px 0;-webkit-tap-highlight-color:transparent}
+.message-emoji-grid button.mine{background:#f3e6ea}
+.message-emoji-grid button:active{background:#f3e6ea;transform:scale(1.12)}
+@keyframes message-emoji-enter{from{transform:translateY(24px);opacity:0}to{transform:translateY(0);opacity:1}}
+@media(prefers-reduced-motion:reduce){.message-emoji-sheet{animation:none}.message-emoji-grid button:active{transform:none}}
 .msg-more-menu{position:fixed;right:8px;z-index:10042;min-width:176px;padding:6px 0;border-radius:14px;background:#fff;box-shadow:0 10px 32px rgba(39,29,37,.26),0 0 0 1px rgba(104,44,67,.06)}
 .msg-more-menu[hidden]{display:none}
 .msg-more-menu button{display:flex;align-items:center;gap:12px;width:100%;padding:12px 16px;border:0;background:none;color:#271D25;font:550 15px Inter,sans-serif;text-align:left}
@@ -22912,6 +22927,93 @@ const SELECTION_ICONS = {
 const messageActionRegistry = new Map(); // message id -> { room, rec, replyText, isMe }
 let messageSelectionController = null;
 let messageSelectionUi = null;
+let expandedMessageReactionPicker = null;
+const MESSAGE_REACTION_CATEGORIES = [
+  { name:'Smileys', emojis:'😀 😃 😄 😁 😆 😅 😂 🤣 😊 😇 🙂 🙃 😉 😌 😍 🥰 😘 😗 😙 😚 😋 😛 😝 😜 🤪 🤨 🧐 🤓 😎 🥸 🤩 🥳 😏 😒 😞 😔 😟 😕 🙁 ☹️ 😣 😖 😫 😩 🥺 😢 😭 😤 😠 😡 🤬 🤯 😳 🥵 🥶 😱 😨 😰 😥 😓 🤗 🤔 🫣 🤭 🫢 🫡 🤫 🫠 🤥 😶 😐 😑 😬 🫨 🙄 😯 😦 😧 😮 😲 🥱 😴 🤤 😪 😮‍💨 😵 🤐 🥴 🤢 🤮 🤧 😷 🤒 🤕 🤑 🤠 😈 👿 👻 💀 ☠️ 👽 🤖 💩 🎃 😺 😸 😹 😻 😼 😽 🙀 😿 😾' },
+  { name:'Hearts', emojis:'❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 🩷 🩵 🩶 💔 ❤️‍🔥 ❤️‍🩹 ❣️ 💕 💞 💓 💗 💖 💘 💝 💟 💌 💋 💐 🌹 🥀' },
+  { name:'Hands', emojis:'👍 👎 👏 🙌 🫶 🤝 🙏 👋 🤚 🖐️ ✋ 🖖 🫰 ✌️ 🤞 🤟 🤘 🤙 👌 🤌 🤏 👈 👉 👆 👇 ☝️ ✊ 👊 🤛 🤜 💪 ✍️ 💅 👍🏻 👍🏼 👍🏽 👍🏾 👍🏿 👏🏻 👏🏼 👏🏽 👏🏾 👏🏿 🙏🏻 🙏🏼 🙏🏽 🙏🏾 🙏🏿' },
+  { name:'People', emojis:'👶 🧒 👦 👧 🧑 👨 👩 👱 🧔 👴 👵 🙍 🙎 🙅 🙆 💁 🙋 🧏 🙇 🤦 🤷 💆 💇 🚶 🧍 🧎 🏃 💃 🕺 🧖 🧘 🛀 🛌 👫 👬 👭 🫂 👀 👁️ 👄 🧠 🫀 🦷 👂 👃 🦶 🦵' },
+  { name:'Nature', emojis:'🐶 🐱 🐭 🐹 🐰 🦊 🐻 🐼 🐨 🐯 🦁 🐮 🐷 🐸 🐵 🐔 🐧 🐦 🦆 🦉 🦋 🐝 🐞 🐢 🐍 🐙 🐬 🐳 🐟 🐘 🦒 🐕 🐈 🐾 🌸 🌼 🌻 🌺 🌷 🌱 🌲 🌳 🌴 🍀 🍁 🍂 🌍 🌞 🌝 🌚 ⭐ 🌟 ✨ ⚡ 🔥 🌈 ☀️ 🌤️ ☁️ 🌧️ ❄️ 💧 🌊' },
+  { name:'Food', emojis:'🍏 🍎 🍐 🍊 🍋 🍌 🍉 🍇 🍓 🫐 🍈 🍒 🍑 🥭 🍍 🥥 🥝 🍅 🥑 🥦 🌶️ 🌽 🥕 🥔 🍞 🥐 🥯 🥞 🧇 🧀 🍳 🥓 🥩 🍗 🍔 🍟 🍕 🌭 🥪 🌮 🌯 🥙 🍛 🍚 🍜 🍝 🍣 🍤 🥟 🍦 🍨 🍩 🍪 🎂 🍰 🧁 🍫 🍿 🍯 ☕ 🍵 🥤 🧃 🧋 🍺 🍷 🥂 🍾' },
+  { name:'Activities', emojis:'🎉 🎊 🎈 🎁 🎀 🎂 🎄 🎆 🎇 🪔 ⚽ 🏀 🏈 ⚾ 🎾 🏐 🏉 🏏 🏓 🏸 🏒 🥊 🥋 🎯 🎳 🏆 🥇 🥈 🥉 🏅 🎖️ 🎮 🕹️ 🎲 🧩 🎭 🎨 🎬 🎤 🎧 🎼 🎹 🥁 🎷 🎺 🎸 🎻 🏊 🏄 🚴 🧗 🤸 🤾' },
+  { name:'Travel', emojis:'🚗 🚕 🚙 🚌 🚎 🏎️ 🚓 🚑 🚒 🚐 🚚 🚲 🛵 🏍️ 🚂 🚆 🚇 🚊 ✈️ 🚀 🛸 🚁 ⛵ 🚢 ⚓ 🧳 🏠 🏡 🏢 🏥 🏫 🏨 🏰 🕌 🛕 ⛪ 🗽 🗼 🌉 🏖️ 🏝️ 🏕️ ⛰️ 🌋 🌅 🌄 🌇 🌃 🌌 🎡 🎢' },
+  { name:'Objects', emojis:'⌚ 📱 💻 ⌨️ 🖥️ 📷 📸 📹 🎥 📺 📻 💡 🔦 🕯️ 🔑 🔒 🔓 🛡️ 💎 💍 👑 👓 🕶️ 👕 👗 👟 👠 🎒 👜 👛 💼 📚 📖 📝 ✏️ 🖊️ 📌 📎 ✂️ 🔍 💰 💵 💸 💳 🧾 📦 🛍️ 🧸 🛏️ 🪑 🛋️ 🪴' },
+  { name:'Symbols', emojis:'💯 ✅ ☑️ ✔️ ❌ ❎ ❓ ❔ ❗ ❕ ‼️ ⁉️ ⚠️ 🚫 ⛔ 🛑 🔴 🟠 🟡 🟢 🔵 🟣 ⚫ ⚪ 🟤 🟥 🟧 🟨 🟩 🟦 🟪 ⬛ ⬜ 🟫 🔺 🔻 🔸 🔹 🔶 🔷 💠 🔔 🔕 🎵 🎶 ♻️ 🆗 🆕 🆒 🆓 🆙 🆘 💤 💬 🗯️ 💭 🏁 🚩 🏳️ 🏴' },
+].map(category => ({ ...category, emojis:category.emojis.split(' ') }));
+const MESSAGE_REACTION_EMOJIS = new Set(MESSAGE_REACTION_CATEGORIES.flatMap(category => category.emojis));
+
+function isSupportedMessageReaction(emoji) {
+  return typeof emoji === 'string' && MESSAGE_REACTION_EMOJIS.has(emoji);
+}
+
+function closeExpandedMessageReactions() {
+  const picker = expandedMessageReactionPicker;
+  if (!picker) return;
+  expandedMessageReactionPicker = null;
+  picker.cleanup();
+  picker.overlay.remove();
+  messageSelectionUi?.react.querySelector('[data-more-reactions]')?.setAttribute('aria-expanded', 'false');
+  positionMessageReactionBar();
+}
+
+function openExpandedMessageReactions() {
+  const controller = messageSelectionController;
+  const state = controller?.state();
+  if (!controller || state.count !== 1 || !state.anchor?.isConnected) return;
+  closeExpandedMessageReactions();
+  const overlay = document.createElement('div');
+  overlay.className = 'message-emoji-overlay';
+  overlay.innerHTML = `<section class="message-emoji-sheet" role="dialog" aria-modal="true" aria-labelledby="message-emoji-title">
+    <div class="message-emoji-heading"><h2 id="message-emoji-title">React with an emoji</h2><button type="button" class="message-emoji-close" aria-label="Close emoji picker">×</button></div>
+    <nav class="message-emoji-tabs" aria-label="Emoji categories"></nav><div class="message-emoji-grid" role="group" aria-label="Smileys"></div></section>`;
+  const tabs = overlay.querySelector('.message-emoji-tabs');
+  const grid = overlay.querySelector('.message-emoji-grid');
+  const showCategory = index => {
+    const category = MESSAGE_REACTION_CATEGORIES[index];
+    tabs.querySelectorAll('button').forEach((button, i) => button.setAttribute('aria-pressed', String(i === index)));
+    grid.setAttribute('aria-label', category.name);
+    grid.innerHTML = category.emojis.map(emoji => `<button type="button" data-emoji="${emoji}" aria-label="React ${emoji}" class="${emoji === state.currentReaction ? 'mine' : ''}">${emoji}</button>`).join('');
+    grid.scrollTop = 0;
+  };
+  tabs.innerHTML = MESSAGE_REACTION_CATEGORIES.map((category, index) => `<button type="button" data-category="${index}" aria-pressed="false">${category.name}</button>`).join('');
+  tabs.addEventListener('click', event => {
+    const button = event.target.closest('[data-category]');
+    if (button) showCategory(Number(button.dataset.category));
+  });
+  overlay.addEventListener('mousedown', event => event.preventDefault());
+  overlay.addEventListener('click', event => {
+    if (event.target === overlay || event.target.closest('.message-emoji-close')) { closeExpandedMessageReactions(); return; }
+    const button = event.target.closest('[data-emoji]');
+    if (!button || !isSupportedMessageReaction(button.dataset.emoji)) return;
+    const current = controller.state();
+    const valid = messageSelectionController === controller && current.count === 1 && current.anchor === state.anchor && state.anchor.isConnected;
+    closeExpandedMessageReactions();
+    if (valid) controller.react(button.dataset.emoji);
+  });
+  const onKey = event => {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeExpandedMessageReactions(); }
+    if (event.key === 'Tab') {
+      const buttons = [...overlay.querySelectorAll('button')];
+      const index = buttons.indexOf(document.activeElement);
+      if (index < 0 || (!event.shiftKey && index === buttons.length - 1) || (event.shiftKey && index === 0)) {
+        event.preventDefault(); buttons[event.shiftKey ? buttons.length - 1 : 0]?.focus({ preventScroll:true });
+      }
+    }
+  };
+  const fit = () => { const viewport = window.visualViewport; overlay.style.bottom = `${viewport ? Math.max(0, innerHeight - viewport.height - viewport.offsetTop) : 0}px`; };
+  document.addEventListener('keydown', onKey, true);
+  window.visualViewport?.addEventListener('resize', fit);
+  window.visualViewport?.addEventListener('scroll', fit);
+  expandedMessageReactionPicker = { overlay, cleanup() {
+    document.removeEventListener('keydown', onKey, true);
+    window.visualViewport?.removeEventListener('resize', fit);
+    window.visualViewport?.removeEventListener('scroll', fit);
+  } };
+  document.body.appendChild(overlay);
+  showCategory(0); fit();
+  messageSelectionUi.react.hidden = true;
+  messageSelectionUi.react.querySelector('[data-more-reactions]')?.setAttribute('aria-expanded', 'true');
+}
 
 function selectionIconSvg(name) {
   return `<svg viewBox="0 0 24 24" aria-hidden="true">${SELECTION_ICONS[name]}</svg>`;
@@ -22958,6 +23060,7 @@ function ensureMessageSelectionUi() {
     else if (item.dataset.more === 'edit') controller.edit();
   });
   react.addEventListener('click', event => {
+    if (event.target.closest('[data-more-reactions]')) { openExpandedMessageReactions(); return; }
     const button = event.target.closest('[data-emoji]');
     if (button && messageSelectionController) messageSelectionController.react(button.dataset.emoji);
   });
@@ -23004,11 +23107,13 @@ function positionMessageReactionBar() {
   const ui = messageSelectionUi;
   const controller = messageSelectionController;
   if (!ui || !controller) return;
+  if (expandedMessageReactionPicker) { ui.react.hidden = true; return; }
   const state = controller.state();
   if (state.count !== 1 || !state.anchor || !state.anchor.isConnected) { ui.react.hidden = true; return; }
   if (ui.react.dataset.owner !== String(controller.reactions.join(''))) {
     ui.react.innerHTML = controller.reactions.map(emoji =>
-      `<button type="button" data-emoji="${emoji}" aria-label="React ${emoji}">${emoji}</button>`).join('');
+      `<button type="button" data-emoji="${emoji}" aria-label="React ${emoji}">${emoji}</button>`).join('')
+      + '<button type="button" class="msg-reaction-more" data-more-reactions aria-label="More emojis" aria-haspopup="dialog" aria-expanded="false">+</button>';
     ui.react.dataset.owner = String(controller.reactions.join(''));
   }
   ui.react.querySelectorAll('[data-emoji]').forEach(button => button.classList.toggle('mine', button.dataset.emoji === state.currentReaction));
@@ -23040,6 +23145,7 @@ function showMessageSelection(controller, headerSelector) {
 }
 
 function refreshMessageSelection() {
+  closeExpandedMessageReactions();
   const controller = messageSelectionController;
   if (!controller) return;
   const ui = ensureMessageSelectionUi();
@@ -23056,6 +23162,7 @@ function refreshMessageSelection() {
 }
 
 function hideMessageSelection() {
+  closeExpandedMessageReactions();
   messageSelectionController = null;
   document.body.classList.remove('msg-selecting');
   if (!messageSelectionUi) return;
