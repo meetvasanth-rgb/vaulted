@@ -12947,6 +12947,9 @@ function prepareChime() {
 }
 
 function unlockAudio() {
+  // A silent Web Audio source still takes iOS media focus from other apps.
+  // Explicit tone previews, voice playback and calls activate their own audio.
+  if (nativePlatform() === 'ios') return;
   if (_audioUnlocked) return;
   try {
     if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -18115,7 +18118,9 @@ function playMessageTonePreview(id) {
 // went through here kept playing the chosen tone at random in the background. Only
 // the incoming-call ring asks for it explicitly ({ force:true }).
 function playChime({ force = false } = {}) {
-  if (nativePlatform() === 'android' && !force) return;
+  // Native notifications own passive alerts; reconnect/join chimes must not
+  // interrupt music merely because the app or a conversation was opened.
+  if (['android', 'ios'].includes(nativePlatform()) && !force) return;
   if (!chimeEnabled) return;
   try {
     if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -31224,6 +31229,9 @@ function createVideoAttachmentThumbnail(file, maxDim = 480) {
     video.onerror = () => finish(null);
     const decodeThenCapture = () => {
       if (settled) return;
+      // Seek/load can decode a poster without starting playback. Even a muted
+      // hidden video can acquire iOS audio focus during idle cache backfill.
+      if (nativePlatform() === 'ios') { queueCapture(); return; }
       try {
         const playback = video.play();
         if (playback?.then) playback.then(queueCapture).catch(queueCapture);
