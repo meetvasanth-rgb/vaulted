@@ -8,7 +8,7 @@ const html = fs.readFileSync(path.join(root, 'client', 'index.html'), 'utf8');
 const sw = fs.readFileSync(path.join(root, 'client', 'sw.js'), 'utf8');
 
 test('New Connection opens a local rear-camera QR scanner', () => {
-  assert.match(html, /Scan QR with camera/);
+  assert.match(html, /onclick="openPrivateNumberScanner\(\)" aria-label="Scan contact QR code"/);
   assert.match(html, /id="private-number-scanner-video"[^>]*playsinline[^>]*autoplay/);
   assert.match(html, /navigator\.mediaDevices\.getUserMedia\(\{/);
   assert.match(html, /facingMode:\{ ideal:'environment' \}/);

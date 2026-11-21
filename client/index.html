@@ -1227,6 +1227,46 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .contacts-empty{margin:40px 10px;text-align:center;color:#75666D;font:400 14px/1.6 'Inter',sans-serif}
 .contacts-empty strong{display:block;font:700 17px 'Inter',sans-serif;color:#271D25;margin-bottom:6px}
 .contacts-empty button{margin-top:14px;border:0;border-radius:14px;background:#682C43;color:#fff;padding:11px 20px;font:600 14px 'Inter',sans-serif;cursor:pointer}
+/* New-chat and contact flows share a quiet white surface and green actions. */
+#s-contacts{background:#fff}
+#s-contacts .contacts-head{background:#fff;border-bottom:1px solid #f1f1f1}
+#s-contacts .contacts-head h1{font-size:20px;font-weight:600}
+#s-contacts .contacts-back,#s-contacts .contacts-add{box-shadow:none;border-radius:50%;color:#243c32}
+#s-contacts.compose-mode .contacts-add{display:none}
+#s-contacts .contacts-search{padding-top:10px}
+#s-contacts .contacts-search input{border:0;background:#f5f6f5;border-radius:24px}
+#s-contacts .contacts-body{padding-left:12px;padding-right:12px;background:#fff}
+#s-contacts .contact-row{padding:12px 8px;border-bottom:0;border-radius:0}
+#s-contacts .contact-avatar{background:#e8f5ee;color:#168b59}
+#s-contacts .contacts-section-label{color:#6b7470;letter-spacing:0;text-transform:none;font-weight:500}
+.new-chat-actions{flex:none;padding:4px 20px 0;background:#fff}
+.new-chat-actions[hidden]{display:none}
+.new-chat-action{display:flex;align-items:center;gap:18px;width:100%;min-height:66px;padding:10px 0;border:0;background:#fff;color:#202823;font-size:16px;font-weight:600;text-align:left}
+.new-chat-action-icon{width:44px;height:44px;flex:none;display:grid;place-items:center;border-radius:50%;background:#18ac70;color:#fff}
+.new-chat-action-icon svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.new-chat-contact-action{display:flex;align-items:center;gap:8px}
+.new-chat-contact-action .new-chat-action{flex:1;min-width:0}
+.new-chat-scan{width:46px;height:46px;flex:none;display:grid;place-items:center;border:0;border-radius:50%;color:#254237;background:#fff}
+.new-chat-scan svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.new-chat-scan:active,.new-chat-action:active{background:#f0f8f3}
+.new-chat-contacts-label{padding:18px 0 10px;color:#758078;font-size:13px;font-weight:500}
+#group-create-overlay{padding:0;background:#fff;backdrop-filter:none;-webkit-backdrop-filter:none;align-items:stretch}
+#group-create-overlay .group-create-card{display:flex;flex-direction:column;width:min(560px,100%);height:100%;max-height:100%;margin:0 auto;border-radius:0;padding:calc(12px + max(env(safe-area-inset-top),var(--android-safe-area-top,0px))) 20px calc(18px + max(env(safe-area-inset-bottom),var(--android-safe-area-bottom,0px)));box-shadow:none;box-sizing:border-box;background:#fff}
+.new-group-head{display:flex;align-items:center;gap:14px;margin-bottom:12px}
+.new-group-head button{display:grid;place-items:center;width:40px;height:40px;flex:none;border:0;background:#fff;color:#243c32}
+.new-group-head svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#group-create-overlay .new-group-head h2{font-size:21px;font-weight:600;margin:0}
+#group-create-overlay .new-group-hint{font-size:14px;font-weight:400;color:#768078;margin:0 0 18px}
+#group-create-overlay .group-name-input{flex:none;border-radius:10px;border-color:#dfe6e1;background:#fff;font-weight:400;font-size:16px}
+#group-create-overlay .group-contact-search{margin-top:12px;border:0;background:#f5f6f5;border-radius:24px}
+#group-create-overlay .group-contact-list{flex:1;min-height:0;max-height:none;overflow-y:auto;border:0;border-radius:0;margin:12px 0}
+#group-create-overlay .group-contact{padding:14px 2px;gap:14px;border-color:#f2f4f2;font-size:16px;font-weight:500}
+#group-create-overlay .group-contact[hidden]{display:none}
+#group-create-overlay .group-contact small{color:#7a837c;font-weight:400;font-size:12px}
+#group-create-overlay .group-contact input{width:21px;height:21px;accent-color:#18a76c;flex:none}
+#group-create-overlay .group-create-actions{flex:none;padding-top:10px}
+#group-create-overlay .group-create-actions .primary{background:#18a76c;border-radius:24px}
+#group-create-overlay .group-create-actions .secondary{background:#fff;color:#52665b}
 .contact-sheet-overlay{position:fixed;inset:0;z-index:10040;background:rgba(20,10,16,.6);display:flex;align-items:flex-end;justify-content:center;padding:16px}
 .contact-sheet{width:min(100%,420px);max-height:90vh;overflow-y:auto;background:#fff;border-radius:22px;padding:16px;display:flex;flex-direction:column;gap:8px;margin-bottom:env(safe-area-inset-bottom)}
 .contact-sheet-head{display:flex;flex-direction:column;gap:3px;padding:2px 4px 8px}
@@ -3347,6 +3387,30 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 .msg-selection-bar svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .msg-selection-bar [data-sel="more"] svg{fill:currentColor;stroke:none}
 .msg-selection-count{flex:1;padding-left:6px;font:650 19px/1 'Manrope',Inter,sans-serif;color:#271D25}
+#new-connection-overlay{padding:0;background:#fff;align-items:stretch;backdrop-filter:none;-webkit-backdrop-filter:none}
+#new-connection-overlay .account-card{width:min(560px,100%);max-width:100%;height:100%;max-height:100%;margin:0 auto;box-sizing:border-box;border:0;border-radius:0;box-shadow:none;background:#fff;padding:calc(12px + max(env(safe-area-inset-top),var(--android-safe-area-top,0px))) 22px calc(24px + max(env(safe-area-inset-bottom),var(--android-safe-area-bottom,0px)))}
+#new-connection-overlay .account-head{justify-content:flex-start;gap:12px;margin-bottom:18px;flex:none}
+#new-connection-overlay #new-connection-title{font-size:21px;font-weight:600;line-height:1.3}
+#new-connection-overlay .new-contact-back{width:38px;height:38px;flex:none;background:#fff;border:0;color:#243c32}
+.new-contact-back svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#new-connection-overlay .account-copy{order:2;margin:0 0 24px;color:#78827b;font-size:14px;line-height:1.5}
+#new-connection-overlay .account-form{order:3}
+.new-contact-number-row{display:flex;align-items:flex-end;gap:10px}
+.new-contact-number-row .account-field{flex:1;min-width:0;margin:0}
+#new-connection-overlay .new-contact-number-row input{background:#fff;border-radius:10px;border-color:#dfe6e1;font-size:18px}
+.new-contact-number-row .new-chat-scan{margin-bottom:2px}
+#new-connection-overlay .account-primary{background:#18a76c;border-color:#18a76c;border-radius:24px;color:#fff;margin-top:16px}
+#new-connection-overlay .account-secondary{border:0;background:#fff;color:#188b5c;padding:12px 0;min-height:44px;border-radius:0;box-shadow:none;text-align:left;font-size:14px}
+#private-number-scanner{background:#fff;color:#202823}
+#private-number-scanner .qr-scanner-head{background:#fff;padding-top:calc(12px + max(env(safe-area-inset-top),var(--android-safe-area-top,0px)))}
+#private-number-scanner .qr-scanner-head button{border:0;background:#fff;color:#243c32;border-radius:50%}
+#private-number-scanner .qr-scanner-head svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#private-number-scanner .qr-scanner-title{font-size:20px;font-weight:600}
+#private-number-scanner .qr-scanner-stage{margin:8px 16px 0;border-radius:18px;background:#202823}
+#private-number-scanner .qr-scanner-frame{border-width:2px;border-radius:18px}
+#private-number-scanner .qr-scanner-frame:before{display:none;animation:none}
+#private-number-scanner .qr-scanner-help{background:#fff;color:#6b7770;font-size:14px;font-weight:400;padding-bottom:calc(20px + max(env(safe-area-inset-bottom),var(--android-safe-area-bottom,0px)))}
+#private-number-scanner .qr-scanner-help.qr-scanner-error{color:#af304d}
 .msg-reaction-bar{position:fixed;z-index:10041;display:flex;gap:1px;padding:5px 7px;border-radius:999px;background:#fff;box-shadow:0 6px 24px rgba(39,29,37,.24),0 0 0 1px rgba(104,44,67,.06)}
 .msg-reaction-bar[hidden]{display:none}
 .msg-reaction-bar button{width:40px;height:40px;padding:0;border:0;border-radius:50%;background:none;font-size:25px;line-height:1;display:grid;place-items:center;transition:transform .12s;-webkit-tap-highlight-color:transparent}
@@ -4130,7 +4194,7 @@ html.vaultlix-native-android #settings-panel.settings-menu-open .settings-versio
     <div class="vault-list-body" id="vault-list-body"></div>
   </main>
   <div class="vault-list-actions">
-    <button class="vault-list-action" type="button" onclick="openNewConnection()" aria-label="Add your friend" data-tooltip="Add your friend"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button class="vault-list-action" type="button" onclick="openNewChat()" aria-label="New chat" data-tooltip="New chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
     <button class="vault-list-action active" id="vault-nav-chats" type="button" onclick="setVaultListMode('chats')" aria-label="Show chats" title="Chats"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/></svg><span class="vault-nav-badge" id="vault-nav-chats-badge" aria-hidden="true" hidden></span></button>
     <button class="vault-list-action" id="vault-nav-calls" type="button" onclick="setVaultListMode('calls')" aria-label="Show calls" title="Calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.68 2.8a2 2 0 0 1-.45 2.11L8.07 9.9a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.32 1.84.55 2.8.68A2 2 0 0 1 22 16.92Z"/></svg><span class="vault-nav-badge" id="vault-nav-calls-badge" aria-hidden="true" hidden></span></button>
     <button class="vault-list-action" id="vault-nav-status" type="button" onclick="openStatusPage()" aria-label="Show status updates" title="Status"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg></button>
@@ -4157,12 +4221,17 @@ html.vaultlix-native-android #settings-panel.settings-menu-open .settings-versio
     <button class="contacts-back" type="button" onclick="closeContacts()" aria-label="Back">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
-    <h1>Contacts</h1>
+    <h1 id="contacts-page-title">Contacts</h1>
     <button class="contacts-add" type="button" onclick="openNewConnection()" aria-label="Add a contact">
       <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
     </button>
   </div>
   <div class="contacts-search"><input id="contacts-search" type="search" placeholder="Search contacts" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oninput="filterContacts(this.value)"/></div>
+  <div class="new-chat-actions" id="new-chat-actions" hidden>
+    <button type="button" class="new-chat-action" onclick="openCreateGroup()"><span class="new-chat-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a5 5 0 0 1 10 0v2M16 6v6M13 9h6M16 15a4 4 0 0 1 5 4"/></svg></span><span>New group</span></button>
+    <div class="new-chat-contact-action"><button type="button" class="new-chat-action" onclick="openNewConnection()"><span class="new-chat-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a5 5 0 0 1 10 0v2M18 13v6M15 16h6"/></svg></span><span>New contact</span></button><button type="button" class="new-chat-scan" onclick="openPrivateNumberScanner()" aria-label="Scan contact QR code"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h6v6H3zM15 3h6v6h-6zM3 15h6v6H3zM15 15h2v2h-2zM20 14v4h-3v3M14 20h1M21 21h-1"/></svg></button></div>
+    <div class="new-chat-contacts-label">Contacts on Vaultlix</div>
+  </div>
   <div class="contacts-body" id="contacts-body"></div>
 </div>
 
@@ -4179,9 +4248,10 @@ html.vaultlix-native-android #settings-panel.settings-menu-open .settings-versio
 
 <div class="group-create-overlay" id="group-create-overlay" role="dialog" aria-modal="true" aria-labelledby="group-create-title">
   <div class="group-create-card">
-    <h2 id="group-create-title">New private group</h2>
-    <p>Select existing Vaultlix contacts. Group names and messages are end-to-end encrypted.</p>
+    <div class="new-group-head"><button type="button" onclick="closeCreateGroup()" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button><h2 id="group-create-title">New group</h2></div>
+    <p class="new-group-hint">Choose a name and add your contacts.</p>
     <input class="group-name-input" id="group-name-input" maxlength="40" placeholder="Group name" autocomplete="off"/>
+    <input class="group-name-input group-contact-search" id="group-contact-search" type="search" placeholder="Search contacts" autocomplete="off" oninput="filterCreateGroupContacts(this.value)"/>
     <div class="group-contact-list" id="group-contact-list"></div>
     <div class="group-create-actions"><button class="secondary" type="button" onclick="closeCreateGroup()">Cancel</button><button class="primary" id="group-create-submit" type="button" onclick="createPrivateGroup()">Create group</button></div>
   </div>
@@ -5334,13 +5404,12 @@ html.vaultlix-native-android #settings-panel.settings-menu-open .settings-versio
 
 <div class="account-overlay" id="new-connection-overlay" onclick="if(event.target===this)closeNewConnection()">
   <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="new-connection-title">
-    <div class="account-head"><div><div class="account-kicker" data-i18n="new_connection">Add your friend</div><div class="account-title" id="new-connection-title" data-i18n="enter_their_private_number">Enter their Private Number</div></div><button class="account-close" onclick="closeNewConnection()" aria-label="Close">×</button></div>
-    <div class="account-copy" data-i18n="new_connection_instructions">Enter the exact 6–10 digit Vaultlix private number shared with you. Vaultlix does not search contacts or suggest people.</div>
+    <div class="account-head"><button class="account-close new-contact-back" type="button" onclick="closeNewConnection()" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button><div class="account-title" id="new-connection-title">New contact</div></div>
+    <div class="account-copy">Enter their Vaultlix private number, or scan their QR code.</div>
     <form class="account-form active" onsubmit="findPrivateNumber(event)">
-      <label class="account-field"><span data-i18n="private_number">Vaultlix private number</span><input id="new-connection-private-number" inputmode="numeric" autocomplete="off" required/></label>
+      <div class="new-contact-number-row"><label class="account-field"><span data-i18n="private_number">Vaultlix private number</span><input id="new-connection-private-number" inputmode="numeric" autocomplete="off" placeholder="Private number" required/></label><button class="new-chat-scan" type="button" onclick="openPrivateNumberScanner()" aria-label="Scan contact QR code"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h6v6H3zM15 3h6v6h-6zM3 15h6v6H3zM15 15h2v2h-2zM20 14v4h-3v3M14 20h1M21 21h-1"/></svg></button></div>
       <div class="account-error" id="new-connection-error" role="alert" aria-live="assertive" hidden></div>
       <button class="account-primary" id="new-connection-submit" type="submit" data-i18n="find_person">Find person</button>
-      <button class="account-secondary private-number-scan" type="button" onclick="openPrivateNumberScanner()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4"/><path d="M8 8h3v3H8zM14 8h2v2h-2zM8 14h2v2H8zM13 13h3v3h-3z"/></svg><span>Scan QR with camera</span></button>
       <button class="account-secondary" type="button" onclick="pasteQuickConnectLink()">Paste Vaultlix link or number</button>
       <button class="account-secondary" type="button" onclick="closeNewConnection();openInviteCodePrompt()">Have an invite code?</button>
     </form>
@@ -5348,7 +5417,7 @@ html.vaultlix-native-android #settings-panel.settings-menu-open .settings-versio
 </div>
 
 <div class="qr-scanner-overlay" id="private-number-scanner" role="dialog" aria-modal="true" aria-labelledby="private-number-scanner-title">
-  <div class="qr-scanner-head"><button type="button" onclick="closePrivateNumberScanner()" aria-label="Close scanner">×</button><div class="qr-scanner-title" id="private-number-scanner-title">Scan Vaultlix QR</div></div>
+  <div class="qr-scanner-head"><button type="button" onclick="closePrivateNumberScanner()" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button><div class="qr-scanner-title" id="private-number-scanner-title">Scan code</div></div>
   <div class="qr-scanner-stage"><video id="private-number-scanner-video" playsinline muted autoplay></video><div class="qr-scanner-shade"></div><div class="qr-scanner-frame" aria-hidden="true"></div><canvas id="private-number-scanner-canvas" hidden></canvas></div>
   <div class="qr-scanner-help" id="private-number-scanner-help" role="status" aria-live="polite">Point the camera at your friend’s Vaultlix QR card.</div>
 </div>
@@ -16072,8 +16141,15 @@ async function openContactChat(number) {
   toast(`Chat request sent to ${label}. It opens by itself when their app is open.`);
 }
 
-function openContacts() {
+function openNewChat() { openContacts({ compose:true }); }
+
+let contactsComposeMode = false;
+function openContacts({ compose = false } = {}) {
   if (!loadAccountState()) { openAccountPanel(); return; }
+  contactsComposeMode = compose;
+  document.getElementById('s-contacts').classList.toggle('compose-mode', compose);
+  document.getElementById('contacts-page-title').textContent = compose ? 'New chat' : 'Contacts';
+  document.getElementById('new-chat-actions').hidden = !compose;
   contactsSearchQuery = '';
   const input = document.getElementById('contacts-search');
   if (input) input.value = '';
@@ -16200,7 +16276,10 @@ function contactSheetAction(action, number) {
 
 document.addEventListener('click', event => {
   const row = event.target?.closest?.('#contacts-body .contact-row');
-  if (row) openContactSheet(row.dataset.contact);
+  if (row) {
+    if (contactsComposeMode) openContactChat(row.dataset.contact);
+    else openContactSheet(row.dataset.contact);
+  }
 });
 
 // Delete chat: one dialog that can also remove the contact (only offered when the

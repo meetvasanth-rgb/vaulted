@@ -641,8 +641,15 @@ function openCreateGroup() {
     ? eligible.map(room => `<label class="group-contact"><input type="checkbox" value="${escHtml(room.code)}"><span>${escHtml(roomDisplayLabel(room))}<small>${escHtml(formatPrivateNumber(room.peerPrivateNumber))}</small></span></label>`).join('')
     : '<div class="group-chat-empty" style="padding:24px">Connect with a friend before creating a group.</div>';
   document.getElementById('group-name-input').value = '';
+  document.getElementById('group-contact-search').value = '';
   document.getElementById('group-create-overlay').classList.add('open');
-  setTimeout(() => document.getElementById('group-name-input')?.focus(), 50);
+}
+
+function filterCreateGroupContacts(value) {
+  const query = String(value || '').trim().toLocaleLowerCase();
+  document.querySelectorAll('#group-contact-list .group-contact').forEach(row => {
+    row.hidden = !!query && !row.textContent.toLocaleLowerCase().includes(query);
+  });
 }
 
 function closeCreateGroup() { document.getElementById('group-create-overlay')?.classList.remove('open'); }
