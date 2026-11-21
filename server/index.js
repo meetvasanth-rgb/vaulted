@@ -20,6 +20,7 @@ const { suggestionRequest: avatarSuggestionRequest, parseSuggestionResponse: par
 const { SafetyStore } = require('./safety-store');
 const { guardedSocketTask } = require('./socket-task');
 const { buildHistoryPage } = require('./history-page');
+const { repairPollRestoreWindow } = require('./poll-restore-window');
 let safetyStore;
 const { StatusStore } = require('./status-store');
 let statusStore;
@@ -6422,11 +6423,13 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const lastDeletionSeq = parseInt(d.lastDeletionSeq||0, 10);
     // full=1 is used only when this device has no local encrypted history
     // window. Current clients request a bounded bootstrap (normally 50),
-    // then every reopen resumes through the ordinary sequence delta.
+    // then reopen resumes through a sequence delta plus an optional bounded
+    // repair window for messages intentionally absent from the device cache.
     const includeOwn = d.full === 1 || d.full === '1';
     const bootstrapLimit = includeOwn
       ? Math.max(1, Math.min(100, parseInt(d.bootstrapLimit, 10) || 50))
       : 0;
+    const restoreWindowLimit = Math.max(0, Math.min(100, parseInt(d.restoreWindowLimit, 10) || 0));
     // Must rehydrate from PostgreSQL like every other conversation route
     // (ensureConversationLoaded), not a bare rooms.get() — the in-memory
     // cache starts EMPTY on every boot (rooms.clear() in bootstrap()), so a
@@ -6440,10 +6443,10 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (!room) return res200(res, { roomGone: true });
     if (!room.members.has(token)) return resErr(res,'Not in conversation.',403);
 
-    // A full bootstrap is explicitly asking for authoritative retained
+    // A bootstrap or repair window is explicitly asking for authoritative retained
     // history. Reconcile it with the durable ciphertext store first instead
     // of trusting a potentially older live-room checkpoint.
-    if (includeOwn) await hydrateRoomMessagesFromPostgres(roomCode, room, room.dbClient || null);
+    if (includeOwn || restoreWindowLimit) await hydrateRoomMessagesFromPostgres(roomCode, room, room.dbClient || null);
 
     const m = room.members.get(token);
     m.lastSeen = Date.now();
@@ -6475,9 +6478,13 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       if (msg.seq <= clientLastSeq) return false;
       if (msg.deleted) return false; // deleted-for-everyone — nothing left to recover
       if (msg.type === 'system') return !messageFromToken(msg, token);
-      return includeOwn || !messageFromToken(msg, token);
+      return includeOwn || restoreWindowLimit > 0 || !messageFromToken(msg, token);
     });
     if (includeOwn && newMsgs.length > bootstrapLimit) newMsgs = newMsgs.slice(-bootstrapLimit);
+    if (restoreWindowLimit) newMsgs = repairPollRestoreWindow({
+      delta:newMsgs, retained:room.msgs, limit:restoreWindowLimit,
+      isOwn:msg => messageFromToken(msg, token), now,
+    });
 
     // Mark delivered — only for messages where the CALLER is the recipient,
     // not the original sender. Without the msg.from check, a full=1

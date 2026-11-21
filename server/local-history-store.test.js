@@ -121,7 +121,9 @@ test('native records carrying their server cursor resume with a delta', () => {
 
 test('every way a message or conversation is removed also removes the stored copy', () => {
   assert.match(client, /historyStoreDelete\(code, id\), eraseNativeMessage\(code, id\)/);
-  assert.match(client, /function secureNativeClearConversation\(conversationId\) \{\s*if \(!conversationId\) return;\s*historyStoreClearRoom\(conversationId\);/);
+  const clearNative = extract(client, 'secureNativeClearConversation');
+  assert.match(clearNative, /historyStoreClearRoom\(conversationId\);/);
+  assert.match(clearNative, /conversationLayouts\.delete\(conversationId\);/);
   assert.match(client, /historyStoreWipeAll\(\);\s*\n\s*try \{ sessionStorage\.clear\(\); localStorage\.clear\(\); \}/);
   // the delete ledger and the server's own deletions
   assert.match(client, /function eraseExpiredMessageCopies[\s\S]*historyStoreDelete\(room\.code, msgId\)/);
@@ -141,7 +143,7 @@ test('opening a conversation paints from the device first and only then asks the
   assert.match(restore, /const syncPlan = historyRestoreSyncPlan\(room, localMessages\);\s*\n\s*const data = await api\('\/api\/poll', syncPlan\.request\);/);
   assert.match(restore, /if \(data\.error\) throw new Error\(data\.error\);\s*\n\s*const nowTs = Date\.now\(\);\s*\n\s*await repairRoomKeyFromAccountBackup\(room, data\.messages\);\s*\n\s*historyStorePut/);
   // the local pass cannot wait behind attachment downloads: restoring never downloads them
-  assert.match(client, /await applyRestoredHistory\(room, stored, Date\.now\(\)\);/);
+  assert.match(client, /await applyRestoredHistory\(room, stored, Date\.now\(\), \{ deferAttachmentRender:isNativeApp\(\) \}\);/);
   assert.doesNotMatch(client, /restoreBatch\(attachmentMessages\)/);
 });
 

@@ -6078,7 +6078,7 @@ function historyReconcilePlan({ local, serverMessages, tombstoneIds, clearedAt }
 // A room with a local ciphertext window resumes from that window's newest
 // sequence. Only a device with no cached history asks for a bounded bootstrap
 // that includes this device's own sends. This keeps normal reopen traffic a
-// small delta instead of downloading the retained conversation again.
+// small delta plus a bounded repair tail, rather than downloading all history.
 function historyRestoreSyncPlan(room, localMessages) {
   const localLastSeq = (localMessages || []).reduce((highest, message) =>
     Math.max(highest, Number(message?.seq || message?.serverSeq) || 0), 0);
@@ -6093,7 +6093,11 @@ function historyRestoreSyncPlan(room, localMessages) {
       lastReadReceiptSeq:hasLocalWindow ? (Number(room.lastReadReceiptSeq) || 0) : 0,
       lastReactionSeq:hasLocalWindow ? (Number(room.lastReactionSeq) || 0) : 0,
       lastDeletionSeq:hasLocalWindow ? (Number(room.lastDeletionSeq) || 0) : 0,
-      ...(hasLocalWindow ? {} : { full:1, bootstrapLimit:HISTORY_LOAD_LIMIT }),
+      // A cached sequence is a high-water mark, not proof of a complete
+      // conversation. Timed messages are deliberately uncached, and a send
+      // acknowledgement can be lost when the app closes. Repair a bounded
+      // recent window in both directions alongside the ordinary delta.
+      ...(hasLocalWindow ? { restoreWindowLimit:HISTORY_LOAD_LIMIT } : { full:1, bootstrapLimit:HISTORY_LOAD_LIMIT }),
     },
   };
 }
