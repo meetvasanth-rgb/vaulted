@@ -232,7 +232,7 @@
     return `<strong>${escapeHtml(main)}</strong>${extra ? `<br><small>${escapeHtml(extra)}</small>` : ''}`;
   }
 
-  function loginLocationCell(login) {
+  function lastUsedLocationCell(login) {
     if (!login) return 'Not recorded';
     const place = [login.city, login.region, login.country].filter(Boolean).join(', ') || 'Location unavailable';
     return `<strong>${escapeHtml(place)}</strong><br><small>${escapeHtml(formatDate(login.at))} · ${escapeHtml(CLIENT_LABELS[login.platform] || 'Unknown device')}</small>`;
@@ -250,7 +250,7 @@
       <td>${escapeHtml(formatDate(identity.createdAt))}</td>
       <td>${escapeHtml(formatDate(identity.updatedAt))}</td>
       <td>${escapeHtml(formatDate(identity.lastActiveAt))}</td>
-      <td>${loginLocationCell(identity.lastLogin)}</td>
+      <td>${lastUsedLocationCell(identity.lastUsedLocation)}</td>
       <td><span class="count-pill">${number(identity.activeDevices)}</span></td>
       <td><span class="status-dot ${identity.notificationDevices ? 'on' : ''}"></span>${identity.notificationDevices ? `${number(identity.notificationDevices)} ready` : 'Not enabled'}</td>
       <td>${number(identity.pendingRequests)}</td>

@@ -4705,6 +4705,23 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     return res200(res, { ok: true, bundle: account.bundle, revision: account.revision, retention:accountRetention(account), ...publicAccount(account) });
   }
 
+  // Explicit foreground events only: no background heartbeat location tracking.
+  // lastLogin is the existing durable column; it now holds last foreground use.
+  if (path === '/api/account/foreground' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    if (!await rateLimited(`account-foreground:${d.accountId}`, 1, 10 * 1000)) {
+      account.lastLogin = loginLocation(ip, headers?.['user-agent']);
+      noteAccountClient(account, detectClientKind(headers?.['user-agent']));
+      account.lastActiveAt = Date.now();
+      account.reclaimWarnings = [];
+      await persistAccount(d.accountId);
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok:true });
+  }
+
   // Lightweight authentication preflight for actions such as Status video
   // processing. It avoids downloading the encrypted account bundle merely
   // to discover that another device has replaced this session.
@@ -6994,7 +7011,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
           createdAt: account.createdAt || null,
           updatedAt: account.updatedAt || account.createdAt || null,
           lastActiveAt:account.lastActiveAt || null,
-          lastLogin:account.lastLogin || null,
+          lastUsedLocation:account.lastLogin || null,
           numberCategory:account.numberCategory || 'standard',
           numberProtection:retention.reason,
           reclaimAt:retention.reclaimAt,

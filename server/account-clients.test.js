@@ -173,14 +173,31 @@ test('sign-up and sign-in record the client, and the admin list reports it', { t
   assert.equal(appIdentity.registeredVia, 'ios');
   assert.deepEqual(appIdentity.clientsSeen, ['ios']);
   assert.equal(appIdentity.usesApp, true);
-  assert.equal(webIdentity.lastLogin.platform, 'android');
-  assert.equal(webIdentity.lastLogin.approximate, true);
-  assert.equal(appIdentity.lastLogin.platform, 'ios');
+  assert.equal(webIdentity.lastUsedLocation.platform, 'android');
+  assert.equal(webIdentity.lastUsedLocation.approximate, true);
+  assert.equal(appIdentity.lastUsedLocation.platform, 'ios');
   assert.ok(!('lastLogin' in login.data), 'location remains admin-only');
   const failed = await post(base, '/api/account/login', {privateNumber:web.privateNumber, authSecret:'wrong'.padEnd(48, 'x')}, IOS_APP);
   assert.equal(failed.status, 403);
   const afterFailed = await (await fetch(`${base}/api/admin/stats`, {headers:{Authorization:`Bearer ${adminKey}`}})).json();
-  assert.deepEqual(afterFailed.identities.find(entry => entry.privateNumber === web.privateNumber).lastLogin, webIdentity.lastLogin);
+  assert.deepEqual(afterFailed.identities.find(entry => entry.privateNumber === web.privateNumber).lastUsedLocation, webIdentity.lastUsedLocation);
+  // Foreground use updates the place/time without creating or replacing a login session.
+  const foreground = await post(base, '/api/account/foreground', {accountId:web.accountId, sessionToken:login.data.sessionToken}, IOS_APP);
+  // The second login above replaced this token; an old installation must not update the location.
+  assert.equal(foreground.status, 401);
+  const currentLogin = await post(base, '/api/account/login', {privateNumber:web.privateNumber, authSecret:web.authSecret}, ANDROID_APP);
+  assert.equal(currentLogin.status, 200);
+  const currentToken = currentLogin.data.sessionToken;
+  const resumed = await post(base, '/api/account/foreground', {accountId:web.accountId, sessionToken:currentToken}, IOS_APP);
+  assert.equal(resumed.status, 200);
+  const afterResume = await (await fetch(`${base}/api/admin/stats`, {headers:{Authorization:`Bearer ${adminKey}`}})).json();
+  const lastUsed = afterResume.identities.find(entry => entry.privateNumber === web.privateNumber).lastUsedLocation;
+  assert.equal(lastUsed.platform, 'ios');
+  assert.ok(lastUsed.at >= webIdentity.lastUsedLocation.at);
+  assert.ok(!('lastUsedLocation' in resumed.data));
+  assert.equal((await post(base, '/api/account/session-check', {accountId:web.accountId, sessionToken:currentToken}, IOS_APP)).status, 200);
+  const unauthorized = await post(base, '/api/account/foreground', {accountId:web.accountId, sessionToken:'wrong'}, ANDROID_APP);
+  assert.equal(unauthorized.status, 401);
   for (const identity of identities) {
     assert.ok(!('userAgent' in identity), 'the user agent itself is never exposed or stored');
   }
