@@ -14,6 +14,7 @@ const { WebSocketServer } = require('ws');
 const { initializeApp, cert } = require('firebase-admin/app');
 const { getMessaging } = require('firebase-admin/messaging');
 const { PostgresStore } = require('./postgres');
+const { loginLocation } = require('./login-location');
 const { buildActivationFunnel } = require('./activation-funnel');
 const { detectClientKind, normalizeClientKind, normalizeClientsSeen, noteAccountClient, describeAccountClients } = require('./account-clients');
 const { suggestionRequest: avatarSuggestionRequest, parseSuggestionResponse: parseAvatarSuggestion } = require('./avatar-suggestion');
@@ -3859,6 +3860,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       }
       if (await safetyStore.isSuspended(d.accountId)) return resErr(res, 'This account has been suspended.', 403);
       const sessionToken = await replaceAccountLoginSession(d.accountId, existing, accountDeviceHash(d.deviceId));
+      existing.lastLogin = loginLocation(ip, headers?.['user-agent']);
       noteAccountClient(existing, detectClientKind(headers?.['user-agent']));
       await persistAccount(d.accountId);
       res.setHeader('Cache-Control', 'no-store');
@@ -3918,6 +3920,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       acquisitionSource:normalizeAcquisitionSource(d.acquisitionSource), activation:{}, isTestAccount:false,
       createdAt:now, updatedAt:now, sessions: [], connectionRequests:[], pushDestinations:[],
     };
+    account.lastLogin = loginLocation(ip, headers?.['user-agent']);
     const sessionToken = newAccountSession(account, accountDeviceHash(d.deviceId));
     const tokenHash = d.reservationToken ? crypto.createHash('sha256').update(d.reservationToken).digest('hex') : null;
     if (postgresEnabled) {
@@ -3948,6 +3951,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (!account || !valid) return resErr(res, 'Vaultlix Private Number or password is incorrect.', 403);
     if (await safetyStore.isSuspended(found.accountId)) return resErr(res, 'This account has been suspended.', 403);
     const sessionToken = await replaceAccountLoginSession(found.accountId, account, accountDeviceHash(d.deviceId));
+    account.lastLogin = loginLocation(ip, headers?.['user-agent']);
     noteAccountClient(account, detectClientKind(headers?.['user-agent']));
     await persistAccount(found.accountId);
     res.setHeader('Cache-Control', 'no-store');
@@ -4044,6 +4048,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       notificationTag:'vaultlix-identity-recovered',
     });
     account.updatedAt = Date.now();
+    account.lastLogin = loginLocation(ip, headers?.['user-agent']);
     noteAccountClient(account, detectClientKind(headers?.['user-agent']));
     await persistAccount(found.accountId);
     res.setHeader('Cache-Control', 'no-store');
@@ -6989,6 +6994,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
           createdAt: account.createdAt || null,
           updatedAt: account.updatedAt || account.createdAt || null,
           lastActiveAt:account.lastActiveAt || null,
+          lastLogin:account.lastLogin || null,
           numberCategory:account.numberCategory || 'standard',
           numberProtection:retention.reason,
           reclaimAt:retention.reclaimAt,

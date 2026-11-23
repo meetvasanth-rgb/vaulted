@@ -77,7 +77,7 @@ test('PostgreSQL stores and restores both fields, and never overwrites where an 
   const upsert = calls.find(call => /ON CONFLICT \(account_id\) DO UPDATE/.test(call[0]));
   assert.match(upsert[0], /registered_via, clients_seen/);
   assert.match(upsert[0], /registered_via=COALESCE\(accounts\.registered_via, EXCLUDED\.registered_via\)/);
-  assert.match(upsert[0], /\$30,\$31::jsonb,\$32::jsonb,\$33,\$34::jsonb,\$35\)/);
+  assert.match(upsert[0], /\$30,\$31::jsonb,\$32::jsonb,\$33,\$34::jsonb,\$35,\$36::jsonb\)/);
   assert.equal(upsert[1][29], 'android');
   assert.equal(upsert[1][30], JSON.stringify(['android', 'web']));
   assert.match(fs.readFileSync(path.join(__dirname, 'postgres.js'), 'utf8'), /ADD COLUMN IF NOT EXISTS registered_via varchar\(16\);\s*ALTER TABLE accounts ADD COLUMN IF NOT EXISTS clients_seen jsonb/);
@@ -173,6 +173,14 @@ test('sign-up and sign-in record the client, and the admin list reports it', { t
   assert.equal(appIdentity.registeredVia, 'ios');
   assert.deepEqual(appIdentity.clientsSeen, ['ios']);
   assert.equal(appIdentity.usesApp, true);
+  assert.equal(webIdentity.lastLogin.platform, 'android');
+  assert.equal(webIdentity.lastLogin.approximate, true);
+  assert.equal(appIdentity.lastLogin.platform, 'ios');
+  assert.ok(!('lastLogin' in login.data), 'location remains admin-only');
+  const failed = await post(base, '/api/account/login', {privateNumber:web.privateNumber, authSecret:'wrong'.padEnd(48, 'x')}, IOS_APP);
+  assert.equal(failed.status, 403);
+  const afterFailed = await (await fetch(`${base}/api/admin/stats`, {headers:{Authorization:`Bearer ${adminKey}`}})).json();
+  assert.deepEqual(afterFailed.identities.find(entry => entry.privateNumber === web.privateNumber).lastLogin, webIdentity.lastLogin);
   for (const identity of identities) {
     assert.ok(!('userAgent' in identity), 'the user agent itself is never exposed or stored');
   }

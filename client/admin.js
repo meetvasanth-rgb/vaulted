@@ -232,6 +232,12 @@
     return `<strong>${escapeHtml(main)}</strong>${extra ? `<br><small>${escapeHtml(extra)}</small>` : ''}`;
   }
 
+  function loginLocationCell(login) {
+    if (!login) return 'Not recorded';
+    const place = [login.city, login.region, login.country].filter(Boolean).join(', ') || 'Location unavailable';
+    return `<strong>${escapeHtml(place)}</strong><br><small>${escapeHtml(formatDate(login.at))} · ${escapeHtml(CLIENT_LABELS[login.platform] || 'Unknown device')}</small>`;
+  }
+
   function renderIdentities(identities) {
     const withApp = identities.filter(identity => identity.usesApp).length;
     const viaWeb = identities.filter(identity => identity.registeredVia === 'web').length;
@@ -244,11 +250,12 @@
       <td>${escapeHtml(formatDate(identity.createdAt))}</td>
       <td>${escapeHtml(formatDate(identity.updatedAt))}</td>
       <td>${escapeHtml(formatDate(identity.lastActiveAt))}</td>
+      <td>${loginLocationCell(identity.lastLogin)}</td>
       <td><span class="count-pill">${number(identity.activeDevices)}</span></td>
       <td><span class="status-dot ${identity.notificationDevices ? 'on' : ''}"></span>${identity.notificationDevices ? `${number(identity.notificationDevices)} ready` : 'Not enabled'}</td>
       <td>${number(identity.pendingRequests)}</td>
       <td><button type="button" class="quiet" data-action="test-account" data-private-number="${encodeURIComponent(identity.privateNumber)}" data-test-account="${identity.isTestAccount ? 'true' : 'false'}">${identity.isTestAccount ? 'Count as real' : 'Mark as test'}</button></td>
-    </tr>`).join('') : '<tr><td colspan="11" class="empty-row">No registered identities yet.</td></tr>';
+    </tr>`).join('') : '<tr><td colspan="12" class="empty-row">No registered identities yet.</td></tr>';
   }
 
   async function setTestAccount(button) {

@@ -288,6 +288,7 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS clients_seen jsonb NOT NULL DEFAUL
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS acquisition_source varchar(40);
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS activation jsonb NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS is_test_account boolean NOT NULL DEFAULT false;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS last_login jsonb;
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS status varchar(16) NOT NULL DEFAULT 'active';
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS is_named boolean NOT NULL DEFAULT false;
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS last_activity bigint NOT NULL DEFAULT 0;
@@ -392,6 +393,7 @@ class PostgresStore {
       dailyLookGeneratedAt:row.daily_look_generated_at == null ? null : Number(row.daily_look_generated_at),
       dailyLookWindowStartedAt:row.daily_look_window_started_at == null ? null : Number(row.daily_look_window_started_at),
       dailyLookGenerationCount:Math.max(0, Number(row.daily_look_generation_count) || 0),
+      lastLogin:row.last_login || null,
       registeredVia:row.registered_via || null, clientsSeen:Array.isArray(row.clients_seen) ? row.clients_seen : [],
       acquisitionSource:row.acquisition_source || null, activation:row.activation && typeof row.activation === 'object' ? row.activation : {},
       isTestAccount:!!row.is_test_account,
@@ -414,8 +416,8 @@ class PostgresStore {
       number_protection, premium_until, reclaim_warnings, tier, is_founding,
       creation_order, daily_look_generated_at, daily_look_window_started_at,
       daily_look_generation_count, created_at, updated_at, inbox_key, request_policy,
-      registered_via, clients_seen, private_invites, acquisition_source, activation, is_test_account
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,$23,$24,$25,$26,$27,$28::jsonb,$29,$30,$31::jsonb,$32::jsonb,$33,$34::jsonb,$35)
+      registered_via, clients_seen, private_invites, acquisition_source, activation, is_test_account, last_login
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,$23,$24,$25,$26,$27,$28::jsonb,$29,$30,$31::jsonb,$32::jsonb,$33,$34::jsonb,$35,$36::jsonb)
     ON CONFLICT (account_id) DO UPDATE SET
       private_number=EXCLUDED.private_number, profile_share_code=EXCLUDED.profile_share_code,
       display_name=EXCLUDED.display_name,
@@ -436,6 +438,7 @@ class PostgresStore {
       inbox_key=EXCLUDED.inbox_key, request_policy=EXCLUDED.request_policy,
       registered_via=COALESCE(accounts.registered_via, EXCLUDED.registered_via),
       clients_seen=EXCLUDED.clients_seen,
+      last_login=EXCLUDED.last_login,
       private_invites=EXCLUDED.private_invites,
       acquisition_source=COALESCE(accounts.acquisition_source, EXCLUDED.acquisition_source),
       activation=EXCLUDED.activation,
@@ -457,6 +460,7 @@ class PostgresStore {
       account.registeredVia || null, JSON.stringify(account.clientsSeen || []),
       JSON.stringify(account.privateInvites || []),
       account.acquisitionSource || null, JSON.stringify(account.activation || {}), !!account.isTestAccount,
+      account.lastLogin ? JSON.stringify(account.lastLogin) : null,
     ]);
     await queryClient.query(`DELETE FROM account_bundle_history
       WHERE account_id=$1 AND revision NOT IN (
