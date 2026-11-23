@@ -121,6 +121,10 @@ public class VaultlixMessagingService extends MessagingService {
         // actually lets this code run reliably while the app is backgrounded
         // or the device is locked — which is also what makes the
         // mark-delivered report below possible in that state at all.
+        String encryptedMessage = safe(data.get("encryptedMessage"));
+        String cacheGroupId = safe(data.get("groupId"));
+        String cacheCode = cacheGroupId.isEmpty() ? safe(data.get("code")) : "group:" + cacheGroupId;
+        if (!encryptedMessage.isEmpty()) new NotificationMessageCache(this).put(cacheCode, encryptedMessage);
         String msgId = safe(data.get("msgId"));
         if (!msgId.isEmpty()) {
             showMessageNotification(data);

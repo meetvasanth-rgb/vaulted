@@ -108,3 +108,51 @@ final class NativeCallRoomStore {
         return handles.compactMap { room(handle: $0) }.filter { seenCodes.insert($0.code).inserted }
     }
 }
+
+// Short-lived E2E ciphertext only. Shared with the notification extension;
+// no message keys, plaintext, session tokens or read receipts are staged here.
+enum NotificationMessageCache {
+    private static let prefix = "vaultlix.notification-ciphertext.v1."
+    private static let ttl: Double = 10 * 60 * 1000
+    private static var defaults: UserDefaults? { UserDefaults(suiteName: "group.com.vaultlix.app") }
+    private static func key(_ conversation: String, _ id: String) -> String {
+        prefix + Data("\(conversation)|\(id)".utf8).base64EncodedString()
+    }
+    static func put(conversation: String, encoded: String) {
+        guard !conversation.isEmpty, conversation.count <= 128, encoded.utf8.count <= 1800,
+              let data = encoded.data(using: .utf8),
+              let envelope = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let id = envelope["id"] as? String, !id.isEmpty, id.count <= 128,
+              let ciphertext = (envelope["content"] ?? envelope["ciphertext"]) as? String,
+              ["v:", "v2:", "g1:"].contains(where: { ciphertext.hasPrefix($0) }), let defaults else { return }
+        let now = Date().timeIntervalSince1970 * 1000
+        var count = 0
+        for (key, value) in defaults.dictionaryRepresentation() where key.hasPrefix(prefix) {
+            count += 1
+            let received = (value as? [String: Any])?["receivedAt"] as? Double ?? 0
+            if received < now - ttl || count > 200 { defaults.removeObject(forKey: key) }
+        }
+        defaults.set(["kind":"notification-envelope", "id":id, "conversation":conversation,
+                      "envelope":envelope, "receivedAt":now], forKey:key(conversation, id))
+    }
+    static func recent(conversation: String) -> [String] {
+        guard let defaults else { return [] }
+        let cutoff = Date().timeIntervalSince1970 * 1000 - ttl
+        return defaults.dictionaryRepresentation().compactMap { key, value in
+            guard key.hasPrefix(prefix), let record = value as? [String: Any],
+                  record["conversation"] as? String == conversation,
+                  (record["receivedAt"] as? Double ?? 0) >= cutoff,
+                  let data = try? JSONSerialization.data(withJSONObject:record) else { return nil }
+            return String(data:data, encoding:.utf8)
+        }
+    }
+    static func remove(conversation: String, id: String) { defaults?.removeObject(forKey:key(conversation, id)) }
+    static func clear(conversation: String? = nil) {
+        guard let defaults else { return }
+        for (key, value) in defaults.dictionaryRepresentation() where key.hasPrefix(prefix) {
+            if conversation == nil || (value as? [String: Any])?["conversation"] as? String == conversation {
+                defaults.removeObject(forKey:key)
+            }
+        }
+    }
+}

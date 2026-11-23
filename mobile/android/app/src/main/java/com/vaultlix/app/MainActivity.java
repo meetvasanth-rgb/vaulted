@@ -1789,6 +1789,7 @@ public class MainActivity extends BridgeActivity {
                 if (manager != null) manager.cancelAll();
                 nativeCallEngine.end(false);
                 nativeCallRoomStore.clear();
+                new NotificationMessageCache(MainActivity.this).clearAll();
                 secureMessageStore.clearAll();
                 purgeDecryptedMediaCacheNow();
                 restoreAudioRoute();
@@ -1984,16 +1985,23 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public String secureLoadMessages(String conversationId, int limit) {
-            return secureMessageStore.recent(conversationId, limit);
+            try {
+                JSONArray records = new JSONArray(secureMessageStore.recent(conversationId, limit));
+                JSONArray pending = new NotificationMessageCache(MainActivity.this).recent(conversationId);
+                for (int index = 0; index < pending.length(); index++) records.put(pending.get(index));
+                return records.toString();
+            } catch (Exception ignored) { return "[]"; }
         }
 
         @JavascriptInterface
         public boolean secureDeleteMessage(String conversationId, String messageId) {
+            new NotificationMessageCache(MainActivity.this).remove(conversationId, messageId);
             return secureMessageStore.delete(conversationId, messageId);
         }
 
         @JavascriptInterface
         public boolean secureClearConversation(String conversationId) {
+            new NotificationMessageCache(MainActivity.this).clear(conversationId);
             return secureMessageStore.clearConversation(conversationId);
         }
     }

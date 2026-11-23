@@ -1576,6 +1576,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             UNUserNotificationCenter.current().removeAllDeliveredNotifications()
             UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
             VaultlixCallManager.shared.endAllCalls()
+            NotificationMessageCache.clear()
             _ = SecureMessageStore.shared.clearAll()
             clearPendingDocumentExport()
             clearPendingOpenFile()
@@ -1595,12 +1596,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
            let requestID = body["requestId"] as? String {
             let requestedLimit = body["limit"] as? Int ?? 50
             let records = SecureMessageStore.shared.recent(conversationID: conversationID, limit: requestedLimit)
+                + NotificationMessageCache.recent(conversation:conversationID)
             emit(name: "vaultlix:secure-messages", detail: ["requestId": requestID, "records": records])
             return
         }
         if action == "secureDeleteMessage",
            let conversationID = body["conversationId"] as? String,
            let messageID = body["messageId"] as? String {
+            NotificationMessageCache.remove(conversation:conversationID, id:messageID)
             let success = SecureMessageStore.shared.delete(conversationID: conversationID, messageID: messageID)
             if let requestId = body["requestId"] as? String {
                 emit(name: "vaultlix:message-erased", detail: ["requestId": requestId, "success": success])
@@ -1609,6 +1612,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         }
         if action == "secureClearConversation",
            let conversationID = body["conversationId"] as? String {
+            NotificationMessageCache.clear(conversation:conversationID)
             _ = SecureMessageStore.shared.clear(conversationID: conversationID)
             return
         }

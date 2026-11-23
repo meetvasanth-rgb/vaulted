@@ -14,6 +14,7 @@ const { WebSocketServer } = require('ws');
 const { initializeApp, cert } = require('firebase-admin/app');
 const { getMessaging } = require('firebase-admin/messaging');
 const { PostgresStore } = require('./postgres');
+const { notificationEnvelope } = require('./notification-envelope');
 const { loginLocation } = require('./login-location');
 const { buildActivationFunnel } = require('./activation-funnel');
 const { detectClientKind, normalizeClientKind, normalizeClientsSeen, noteAccountClient, describeAccountClients } = require('./account-clients');
@@ -967,7 +968,7 @@ function sendApnsNotification(member, payload, ttlSeconds) {
       // Screen and Notification Centre. The service extension remains the
       // primary locked-device path; /api/mark-delivered is idempotent when
       // both callbacks run.
-      ...(parsed.msgId || parsed.thumbnailUrl ? { 'mutable-content': 1 } : {}),
+      ...(parsed.msgId || parsed.encryptedMessage || parsed.thumbnailUrl ? { 'mutable-content': 1 } : {}),
       ...(parsed.msgId ? { 'content-available': 1 } : {}),
     },
     // No message text, encrypted payload, room credential, or member token is
@@ -984,6 +985,7 @@ function sendApnsNotification(member, payload, ttlSeconds) {
     hidePreview: !!parsed.hidePreview,
     callId: parsed.callId || '',
     inviteId: parsed.inviteId || '',
+    encryptedMessage: parsed.encryptedMessage || '',
     msgId: parsed.msgId || '',
     connectionRequest: !!parsed.connectionRequest,
     requestId: parsed.connectionRequest ? String(parsed.requestId || '') : '',
@@ -1061,6 +1063,7 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         hidePreview: parsed.hidePreview ? 'true' : 'false',
         callId: String(parsed.callId || ''),
         inviteId: String(parsed.inviteId || ''),
+        encryptedMessage: String(parsed.encryptedMessage || ''),
         msgId: String(parsed.msgId || ''),
         privacyEvent: parsed.privacyEvent === 'screenshot' || parsed.privacyEvent === 'screen-recording'
           ? parsed.privacyEvent : '',
@@ -4356,7 +4359,8 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       sendAccountPush(member.accountId, { title:'Vaultlix', body:privacyEvent
         ? messageNotificationBody(privacyEvent, null)
         : 'New encrypted group message',
-        tag:`private-group-${group.id}`, privateGroup:true, groupId:group.id }, 'private group message');
+        tag:`private-group-${group.id}`, privateGroup:true, groupId:group.id,
+        encryptedMessage:notificationEnvelope(group.messages.find(item => item.id === d.messageId), {group:true}) }, 'private group message');
     }
     return res200(res, { ok:true, createdAt:group.updatedAt, keyVersion:group.keyVersion });
   }
@@ -6089,7 +6093,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         // otherwise replace the security wording with "New message from …".
         // A dedicated title plus hidden-preview fallback makes the alert clear
         // and privacy-safe during the native rollout.
-        const payload = JSON.stringify({ title, body: messageNotificationBody(privacyEvent, senderLabel, mb.hidePreview === true), tag: `${d.code}-${msgId}`, code: d.code, msgId, privacyEvent, hidePreview:!!privacyEvent || mb.hidePreview === true });
+        const payload = JSON.stringify({ title, body: messageNotificationBody(privacyEvent, senderLabel, mb.hidePreview === true), tag: `${d.code}-${msgId}`, code: d.code, msgId, encryptedMessage:notificationEnvelope(message, {viewOnce:!!d.viewOnce}), privacyEvent, hidePreview:!!privacyEvent || mb.hidePreview === true });
         // urgency:'high' asks the push service (Apple/Google's relay) to wake the
         // device promptly instead of batching/deferring — matters most on iOS,
         // which is more aggressive about delaying "normal" priority pushes to a

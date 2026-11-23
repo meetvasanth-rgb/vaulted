@@ -30,7 +30,7 @@ test('the iOS wrapper drains background hints when the web layer is ready and on
 test('background hints paint unread state immediately and are consumed without a second increment', () => {
   assert.match(client, /window\.addEventListener\('vaultlix:background-inbox'/);
   assert.match(client, /room\.unread = Math\.max\(0, Number\(room\.unread\) \|\| 0\) \+ 1/);
-  assert.match(client, /applyBackgroundInboxHints\(\);[\s\S]{0,80}showScreen\('s-vault-list'\)/);
+  assert.match(client, /applyBackgroundInboxHints\(\);[\s\S]{0,700}if \(!startupNotificationOpened\) \{ showScreen\('s-vault-list'\)/);
   assert.match(client, /const backgroundInboxHinted = consumeBackgroundInboxHint\(room\.code, msg\.id\)/);
   assert.match(client, /if \(!backgroundInboxHinted\) \{\s*room\.unread\+\+/);
   assert.match(client, /if \(isRoomVisible\(room\)\) \{[\s\S]{0,180}hints\.delete\(msgId\)/);

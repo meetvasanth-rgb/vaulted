@@ -1519,6 +1519,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didReceiveRemoteNotification userInfo: [AnyHashable: Any],
                      fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        if let encrypted = userInfo["encryptedMessage"] as? String {
+            let groupID = userInfo["groupId"] as? String ?? ""
+            let code = userInfo["code"] as? String ?? ""
+            NotificationMessageCache.put(conversation:groupID.isEmpty ? code : "group:" + groupID, encoded:encrypted)
+        }
         if let code = userInfo["code"] as? String,
            let msgId = userInfo["msgId"] as? String,
            !code.isEmpty, !msgId.isEmpty {

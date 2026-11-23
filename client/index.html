@@ -4374,7 +4374,7 @@ html.vaultlix-native-android #settings-panel.settings-menu-open .settings-versio
 
     <div class="legal-section">
       <h3>Third-party services</h3>
-      <p>Vaultlix is hosted on Railway (railway.app). Railway may collect standard infrastructure logs including IP addresses. Please review Railway's privacy policy for details. We use Google Fonts for typography — fonts are loaded from Google's servers. Voice and video calls use Cloudflare's TURN service, which relays DTLS-SRTP-encrypted media packets and processes the connection metadata required to operate the relay but cannot decrypt call audio or video. Push notifications are delivered through Apple's and Google's respective push notification services, which see that a notification was sent to your device but not its content.</p>
+      <p>Vaultlix is hosted on Railway (railway.app). Railway may collect standard infrastructure logs including IP addresses. Please review Railway's privacy policy for details. We use Google Fonts for typography — fonts are loaded from Google's servers. Voice and video calls use Cloudflare's TURN service, which relays DTLS-SRTP-encrypted media packets and processes the connection metadata required to operate the relay but cannot decrypt call audio or video. Push notifications are delivered through Apple's and Google's respective push notification services, which process notification text and delivery metadata. Small message envelopes may also be carried as end-to-end encrypted ciphertext so the device can prepare them before the app opens. These providers do not receive the decryption keys and cannot read those encrypted messages.</p>
       <p>If you open the GIF picker, your device sends searches, language/region settings, and ordinary network information such as your IP address directly to KLIPY. When a GIF is displayed, the recipient's device loads it directly from KLIPY. The selected GIF reference is included inside the end-to-end encrypted Vaultlix message, but the GIF file itself is delivered by KLIPY and is not end-to-end encrypted by Vaultlix. Vaultlix does not send your private number to KLIPY or proxy, cache, or re-host KLIPY media.</p>
       <p>If you expressly use Portrait Studio, the photo you select is sent to OpenAI to create the requested image. Vaultlix does not keep the selected source photo after that request. OpenAI may retain API inputs and outputs for abuse monitoring under its API data controls; API data is not used to train OpenAI models by default. The created image remains on your device unless you choose to use it as your Vaultlix profile image.</p>
     </div>
@@ -5818,7 +5818,7 @@ function parseSecureNativeHistory(room, values) {
     if (rec?.kind === 'conversation-layout') { restoreConversationLayout(room.code, rec); continue; }
     if (!rec || typeof rec !== 'object' || typeof rec.id !== 'string' || !rec.id
         || rec.deleted || rec.replyData?.deleted || cacheRecordErased(room.code, rec.id)
-        || ['sys', 'blocked', 'attachment-loading', 'attachment-unavailable'].includes(rec.kind)
+        || ['sys', 'blocked', 'attachment-loading', 'attachment-unavailable', 'notification-envelope'].includes(rec.kind)
         || !nativeMessageCacheEligible(room, rec)) continue;
     const serverSeq = Number(rec.serverSeq || rec.seq) || 0;
     if (serverSeq > 0) rec.serverSeq = serverSeq;
@@ -5827,10 +5827,37 @@ function parseSecureNativeHistory(room, values) {
   return records.slice(-HISTORY_LOAD_LIMIT);
 }
 
+function stagedNotificationEnvelope(value, now = Date.now()) {
+  let item;
+  try { item = typeof value === 'string' ? JSON.parse(value) : value; } catch (_) { return null; }
+  const receivedAt = Number(item?.receivedAt), message = item?.envelope;
+  if (item?.kind !== 'notification-envelope' || !Number.isFinite(receivedAt)
+      || receivedAt > now + 60000 || now - receivedAt > 10 * 60 * 1000
+      || !message?.id || message.id !== item.id) return null;
+  const ciphertext = message.content || message.ciphertext;
+  if (typeof ciphertext !== 'string' || ciphertext.length > 1800 || !/^(?:v:|v2:|g1:)/.test(ciphertext)) return null;
+  return message;
+}
+
 async function restoreSecureNativeHistory(room) {
   if (!isNativeApp() || !room?.code) return [];
-  const records = parseSecureNativeHistory(room, await secureNativeLoadMessages(room.code, HISTORY_LOAD_LIMIT));
+  const values = await secureNativeLoadMessages(room.code, HISTORY_LOAD_LIMIT);
   const now = Date.now();
+  const staged = [];
+  for (const value of values || []) {
+    const message = stagedNotificationEnvelope(value, now);
+    if (!message?.id || cacheRecordErased(room.code, message.id)
+        || Number(message.ts) <= (Number(room.lastKnownClearedAt) || 0)) continue;
+    // Pushes may arrive out of order. Only the authenticated server delta may
+    // advance lastSeq; otherwise an earlier missing message could be skipped.
+    staged.push({ ...message, seq:0, from:'peer' });
+  }
+  if (staged.length && room.sharedKey) {
+    await applyRestoredHistory(room, staged, now, {deferAttachmentRender:true});
+    room.localHistoryRestored = true;
+    room.notificationEnvelopeReady = true;
+  }
+  const records = parseSecureNativeHistory(room, values);
   for (const rec of records) {
     if (Number(rec.deleteAt || rec.expiresAt) > 0 && Number(rec.deleteAt || rec.expiresAt) <= now) {
       secureNativeDeleteMessage(room.code, rec.id);
@@ -22068,6 +22095,70 @@ let pendingNotificationRoomCode = null;
 // have finished loading yet when the tap arrives.
 let pendingNotificationGroupId = null;
 
+let notificationOpenGeneration = 0;
+let notificationOpenJob = null;
+let notificationOpenTargetKey = null;
+
+async function prepareNotificationRoom(code) {
+  const room = rooms.get(code);
+  if (!room) return false;
+  if (room.notificationLocalReady) { await restoreSecureNativeHistory(room); return true; }
+  if (room.notificationLocalJob) return room.notificationLocalJob;
+  room.notificationLocalJob = (async () => {
+    const session = loadRoomSession(code);
+    if (!room.myKeyPair && session) await importKeyPairFromStorage(room, session);
+    if (!room.sharedKey && room.myKeyPair && room.lastKnownPeerPubKey) await deriveSharedKey(room, room.lastKnownPeerPubKey);
+    if (room.keyVerificationFailed) return false;
+    if (!room.localHistoryRestored) await restoreLocalHistory(room);
+    room.notificationLocalReady = true;
+    return true;
+  })().catch(() => false).finally(() => { room.notificationLocalJob = null; });
+  return room.notificationLocalJob;
+}
+
+// Prepare only the requested conversation. The inbox and unrelated room joins
+// are not part of a notification's critical path. App Lock is checked again
+// after asynchronous work, so a late completion cannot expose a locked chat.
+function openPreparedNotificationTarget(kind, target) {
+  const targetKey = `${kind}:${target}`;
+  if (notificationOpenJob && notificationOpenTargetKey === targetKey) return notificationOpenJob;
+  notificationOpenTargetKey = targetKey;
+  const generation = ++notificationOpenGeneration;
+  const job = (async () => {
+    if (quickLockActive) return false;
+    if (kind === 'group') {
+      const group = privateGroups.get(target), state = loadAccountState();
+      if (!group || !state || !hasPrivateGroupKeys(group)) return false;
+      await restorePrivateGroupHistory(group, state);
+      if (isNativeApp()) await restorePrivateGroupNativePreviews(group);
+    } else if (!await prepareNotificationRoom(target)) return false;
+    if (quickLockActive || generation !== notificationOpenGeneration) return false;
+    if (kind === 'group') {
+      pendingNotificationGroupId = null;
+      showScreen('s-vault-list');
+      await openPrivateGroup(target);
+      // Metadata refresh can follow the already populated conversation.
+      refreshPrivateGroups().catch(() => {});
+    } else {
+      const room = rooms.get(target);
+      if (!room || isChatConcealed(target)) return switchToRoomByCode(target);
+      pendingNotificationRoomCode = null;
+      setActiveRoom(target);
+      showScreen('s-chat');
+      flushPendingReads(room);
+      if (!room.historyLoaded) restoreRoomHistoryInBackground(room);
+      else doPoll(room).catch(() => {});
+    }
+    hideRestoreSkeleton();
+    return true;
+  })();
+  notificationOpenJob = job;
+  job.finally(() => {
+    if (notificationOpenJob === job) { notificationOpenJob = null; notificationOpenTargetKey = null; }
+  }).catch(() => {});
+  return job;
+}
+
 function openPendingNotificationTarget() {
   // Keep the destination queued behind App Lock. After a successful unlock,
   // completeQuickUnlock() calls this again so no private chat is exposed first.
@@ -22091,14 +22182,13 @@ function openPendingNotificationTarget() {
   if (pendingNotificationGroupId) {
     const groupId = pendingNotificationGroupId;
     if (!privateGroups.has(groupId)) return false;
-    pendingNotificationGroupId = null;
-    refreshPrivateGroups().then(() => openPrivateGroup(groupId)).catch(() => {});
+    openPreparedNotificationTarget('group', groupId).catch(() => {});
     return true;
   }
   if (pendingNotificationRoomCode) {
     const code = pendingNotificationRoomCode;
-    if (!switchToRoomByCode(code)) return false;
-    pendingNotificationRoomCode = null;
+    if (!rooms.has(code)) return false;
+    openPreparedNotificationTarget('room', code).catch(() => {});
     return true;
   }
   return false;
@@ -22127,7 +22217,8 @@ if ('serviceWorker' in navigator) {
       return;
     }
     if (event.data && event.data.type === 'private-group-click') {
-      refreshPrivateGroups().then(() => openPrivateGroup(event.data.groupId)).catch(() => {});
+      pendingNotificationGroupId = event.data.groupId;
+      openPendingNotificationTarget();
       return;
     }
     if (event.data && event.data.type === 'vaultlix-update-click') {
@@ -22136,7 +22227,8 @@ if ('serviceWorker' in navigator) {
       return;
     }
     if (event.data && event.data.type === 'notification-click' && event.data.code) {
-      if (!switchToRoomByCode(event.data.code)) pendingNotificationRoomCode = event.data.code;
+      pendingNotificationRoomCode = event.data.code;
+      openPendingNotificationTarget();
     }
   });
 }
@@ -28941,7 +29033,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   // plain revisit) all rewrite the URL to one with no fragment, which would
   // silently drop this if it weren't captured in this same first tick.
   pendingInviteKeyCommitment = parseKeyCommitmentFromHash(location.hash);
+  let startupNotificationOpened = false;
   const startupAccount = loadAccountState();
+  if (startupParams.get('room')) pendingNotificationRoomCode = startupParams.get('room');
+  if (startupPrivateGroupId) pendingNotificationGroupId = startupPrivateGroupId;
   if (startupAccount) {
     for (const group of loadPrivateGroupSessions()) {
       if (group.ownerAccountId === startupAccount.accountId) privateGroups.set(group.id, {
@@ -28955,7 +29050,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         historyHydrated:false,
       });
     }
-    if (privateGroups.size) preloadPrivateGroupsInBackground();
+    if (privateGroups.size && !pendingNotificationGroupId) preloadPrivateGroupsInBackground();
   }
   // Never hydrate conversation metadata or encryption credentials into the
   // logged-out UI. Explicit sign-out erases them; this gate also protects
@@ -28998,6 +29093,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       room.nickname = session.nickname || null;
       room.restorePending = true;
       room.historyLoaded = false;
+      for (const cursor of ['lastSeq','lastReceiptSeq','lastReadReceiptSeq','lastReactionSeq','lastDeletionSeq']) room[cursor] = Number(session[cursor]) || 0;
       // Loaded here rather than only in the slow per-room loop below
       // (which awaits a real /api/join network round-trip per room,
       // sequentially) — restoreRoomHistoryInBackground() (triggered
@@ -29014,8 +29110,12 @@ window.addEventListener('DOMContentLoaded', async () => {
       addRoomToState(room);
     }
     applyBackgroundInboxHints();
-    showScreen('s-vault-list');
-    hideRestoreSkeleton();
+    if (!quickLockActive && pendingNotificationGroupId && privateGroups.has(pendingNotificationGroupId)) {
+      startupNotificationOpened = await openPreparedNotificationTarget('group', pendingNotificationGroupId);
+    } else if (!quickLockActive && pendingNotificationRoomCode && rooms.has(pendingNotificationRoomCode)) {
+      startupNotificationOpened = await openPreparedNotificationTarget('room', pendingNotificationRoomCode);
+    }
+    if (!startupNotificationOpened) { showScreen('s-vault-list'); hideRestoreSkeleton(); }
     await new Promise(resolve => requestAnimationFrame(resolve));
   }
   let restoredAny = false;
@@ -29067,11 +29167,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     // is rebuilt from a full server fetch; set here only as a fallback in
     // case that call fails partway through (e.g. offline on load) so normal
     // incremental polling still has a sane position to resume from.
-    room.lastSeq = session.lastSeq || 0;
-    room.lastReceiptSeq = session.lastReceiptSeq || 0;
-    room.lastReadReceiptSeq = session.lastReadReceiptSeq || 0;
-    room.lastReactionSeq = session.lastReactionSeq || 0;
-    room.lastDeletionSeq = session.lastDeletionSeq || 0;
+    room.lastSeq = Math.max(Number(room.lastSeq) || 0, Number(session.lastSeq) || 0);
+    room.lastReceiptSeq = Math.max(Number(room.lastReceiptSeq) || 0, Number(session.lastReceiptSeq) || 0);
+    room.lastReadReceiptSeq = Math.max(Number(room.lastReadReceiptSeq) || 0, Number(session.lastReadReceiptSeq) || 0);
+    room.lastReactionSeq = Math.max(Number(room.lastReactionSeq) || 0, Number(session.lastReactionSeq) || 0);
+    room.lastDeletionSeq = Math.max(Number(room.lastDeletionSeq) || 0, Number(session.lastDeletionSeq) || 0);
     // Self-healing invariant, independent of (and running on every launch,
     // unlike) the one-time version-gated migration below: if lastReadSeq
     // has already caught up to lastSeq, this room has nothing outstanding
@@ -29315,11 +29415,13 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
     if (notifyCode && activateRoom && !activateRoom.everOnline) {
       resumeWaitingScreen(activateRoom);
-    } else if (notifyCode) {
+    } else if (notifyCode && !startupNotificationOpened) {
       // Notification and invite taps are explicit navigation: take the user
       // straight to the relevant conversation.
       showScreen('s-chat');
       setActiveRoom(activate);
+    } else if (startupNotificationOpened) {
+      // Target history was shown before the network restore queue.
     } else if (isNativeApp() && localStorage.getItem(NATIVE_ONBOARDING_KEY) === 'notifications') {
       openNativeOnboarding('notifications');
     } else {
@@ -29396,7 +29498,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       : null;
     if (notifyGroupId) {
       history.replaceState(null, '', '/');
-      await openPrivateGroup(notifyGroupId);
+      if (!startupNotificationOpened) await openPreparedNotificationTarget('group', notifyGroupId);
     }
     pendingNotificationGroupId = null;
   }

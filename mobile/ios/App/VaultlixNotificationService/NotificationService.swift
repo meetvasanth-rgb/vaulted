@@ -18,6 +18,10 @@ final class NotificationService: UNNotificationServiceExtension {
         let userInfo = request.content.userInfo
         let code = (userInfo["code"] as? String) ?? ""
         let msgId = (userInfo["msgId"] as? String) ?? ""
+        let groupID = (userInfo["groupId"] as? String) ?? ""
+        if let encrypted = userInfo["encryptedMessage"] as? String {
+            NotificationMessageCache.put(conversation:groupID.isEmpty ? code : "group:" + groupID, encoded:encrypted)
+        }
         attachAnnouncementThumbnail(from: userInfo["thumbnailUrl"] as? String) { [weak self] in
             guard let self else { return }
             guard !code.isEmpty, !msgId.isEmpty else {

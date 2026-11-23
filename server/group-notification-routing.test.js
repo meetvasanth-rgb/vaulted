@@ -39,19 +39,19 @@ test('the server never sees a stripped group push: groupId/privateGroup travel t
 test('a private-group FCM push is data-only (same reliability fix already applied to regular messages)', () => {
   const server = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
   assert.match(server, /const nativeAnnouncement = parsed\.announcement && Number\(member\.announcementPushVersion\) >= 1;/);
-  assert.match(server, /if \(!parsed\.isCall && !parsed\.isCallEnd && !parsed\.missedCall && !parsed\.msgId && !parsed\.groupId && \(!parsed\.announcement \|\| !nativeAnnouncement\)\) \{/);
+  assert.match(server, /if \(!parsed\.isCall && !parsed\.isCallEnd && !parsed\.missedCall && \(!parsed\.msgId \|\| privacyNotification\) && !parsed\.groupId && \(!parsed\.announcement \|\| !nativeAnnouncement\)\) \{/);
 });
 
 test('pushNotificationActionPerformed queues a group-message target for App Lock-safe routing', () => {
   assert.match(client, /if \(notification\?\.data\?\.privateGroup === true \|\| notification\?\.data\?\.privateGroup === 'true'\) \{/);
   assert.match(client, /pendingNotificationGroupId = groupId;\s*\n\s*openPendingNotificationTarget\(\);/);
-  assert.match(client, /function openPendingNotificationTarget\(\) \{[\s\S]*if \(quickLockActive\) return false;[\s\S]*refreshPrivateGroups\(\)\.then\(\(\) => openPrivateGroup\(groupId\)\)/);
+  assert.match(client, /function openPendingNotificationTarget\(\) \{[\s\S]*if \(quickLockActive\) return false;[\s\S]*openPreparedNotificationTarget\('group', groupId\)/);
 });
 
 test('pendingNotificationGroupId is declared and consumed at startup, alongside the URL-param (?group=) path', () => {
   assert.match(client, /let pendingNotificationGroupId = null;/);
   assert.match(client, /const notifyGroupId = \(startupPrivateGroupId && privateGroups\.has\(startupPrivateGroupId\)\) \? startupPrivateGroupId\s*\n\s*: \(pendingNotificationGroupId && privateGroups\.has\(pendingNotificationGroupId\)\) \? pendingNotificationGroupId\s*\n\s*: null;/);
-  assert.match(client, /if \(notifyGroupId\) \{\s*\n\s*history\.replaceState\(null, '', '\/'\);\s*\n\s*await openPrivateGroup\(notifyGroupId\);/);
+  assert.match(client, /if \(notifyGroupId\) \{\s*\n\s*history\.replaceState\(null, '', '\/'\);\s*\n\s*if \(!startupNotificationOpened\) await openPreparedNotificationTarget\('group', notifyGroupId\);/);
 });
 
 test('Android builds its own notification for a group message (deep-linking to ?group=), instead of falling through to the default handler', () => {

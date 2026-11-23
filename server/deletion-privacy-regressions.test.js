@@ -6,7 +6,7 @@ const client=fs.readFileSync(path.join(root,'client/index.html'),'utf8');
 const groups=fs.readFileSync(path.join(root,'client/groups.js'),'utf8');
 const fn=(s,n)=>s.match(new RegExp('(?:async )?function '+n+'\\([^]*?\\n}'))[0];
 function eraser({native=true,local=true,ios=false,storage=new Map()}={}) {
- const events={},requests=[],warnings=[],ctx={Map,Set,JSON,Promise,crypto:require('node:crypto').webcrypto,console,
+ const events={},requests=[],warnings=[],ctx={conversationLayouts:new Map(),persistConversationLayout:()=>{},Map,Set,JSON,Promise,crypto:require('node:crypto').webcrypto,console,
  localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},
  toast:m=>warnings.push(m),document:{hidden:false},setInterval:()=>{},setTimeout,clearTimeout,
  historyStoreDelete:async()=>local,

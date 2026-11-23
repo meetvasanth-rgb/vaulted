@@ -35,6 +35,7 @@ function load(overrides = {}) {
     privateGroups:new Map(),
     loadAccountState:() => ({ accountId:'me', sessionToken:'t' }),
     hasPrivateGroupKeys:() => true,
+    schedulePrivateGroupPreviewBackfill:() => {},
     toast:message => log.toasts.push(message),
     document:{ getElementById:() => null, querySelector:() => null },
     renderPrivateGroupMessages:() => { log.renders++; },

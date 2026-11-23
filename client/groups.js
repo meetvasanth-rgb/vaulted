@@ -305,12 +305,23 @@ function queuePrivateGroupNativePreview(group, message) {
 
 async function restorePrivateGroupNativePreviews(group) {
   const values = await secureNativeLoadMessages(privateGroupCacheCode(group.id), HISTORY_LOAD_LIMIT);
+  const staged = [];
   const previews = new Map();
   for (const value of values || []) {
     let rec;
     try { rec = typeof value === 'string' ? JSON.parse(value) : value; } catch (_) { continue; }
+    const envelope = stagedNotificationEnvelope(rec);
+    if (envelope && !(group.hiddenIds || []).includes(envelope.id)
+        && !cacheRecordErased(privateGroupCacheCode(group.id), envelope.id)) staged.push(envelope);
     if (rec?.kind === 'conversation-layout') { restoreConversationLayout(privateGroupCacheCode(group.id), rec); continue; }
     if (rec?.kind === 'group-media-preview' && rec.nativeMediaPreview && rec.attachment) previews.set(rec.id, rec);
+  }
+  if (staged.length && hasPrivateGroupKeys(group)) {
+    const decoded = await decodePrivateGroupBatch(group, loadAccountState(), staged);
+    mergePrivateGroupMessages(group, decoded);
+    group.historyHydrated = true;
+    group.notificationEnvelopeReady = true;
+    // Leave messageCursor unchanged until a server response fills any gaps.
   }
   for (let index = 0; index < (group.messages || []).length; index++) {
     const current = group.messages[index]; const preview = previews.get(current.id);
@@ -699,6 +710,9 @@ function scrollPrivateGroupToLatest() {
 
 async function openPrivateGroup(id) {
   const group = privateGroups.get(id); if (!group) return;
+  const state = loadAccountState();
+  if (state && hasPrivateGroupKeys(group)) await restorePrivateGroupHistory(group, state);
+  if (quickLockActive) return;
   stopViewportMedia(document.getElementById('chat-body'));
   const body = document.getElementById('group-chat-body');
   beginLatestConversationOpen(body, privateGroupCacheCode(id));
@@ -1864,7 +1878,10 @@ function restorePrivateGroupHistory(group, state) {
   const job = (async () => {
     const page = await historyStoreLoadPage(privateGroupCacheCode(group.id), { limit:HISTORY_LOAD_LIMIT });
     group.historyRestored = true;
-    if (!page.messages.length) return;
+    if (!page.messages.length) {
+      if (typeof isNativeApp === 'function' && isNativeApp()) await restorePrivateGroupNativePreviews(group);
+      return;
+    }
     const decoded = await decodePrivateGroupBatch(group, state, page.messages);
     mergePrivateGroupMessages(group, decoded);
     if (typeof isNativeApp === 'function' && isNativeApp()) await restorePrivateGroupNativePreviews(group);
