@@ -14242,7 +14242,7 @@ async function prepareDailyLookImage(file) {
   const imageName = String(file?.name || '');
   const supportedPhoto = !!file && (/^image\//i.test(file.type || '') || /\.(?:jpe?g|png|webp|heic|heif)$/i.test(imageName));
   if (!supportedPhoto) throw new Error('Choose a photo from this device');
-  if (file.size > 12 * 1024 * 1024) throw new Error('Choose an image smaller than 12 MB');
+  if (file.size > 25 * 1024 * 1024) throw new Error('Choose an image up to 25 MB');
   const sourceUrl = URL.createObjectURL(file);
   try {
     const image = new Image();
