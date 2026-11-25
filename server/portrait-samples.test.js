@@ -67,3 +67,49 @@ test('sample viewer selection and dismissal preserve the private photo and do no
   second.listeners.keydown({key:'Escape',preventDefault(){},stopPropagation(){}});
   assert.equal(selected,1);assert.equal(second.isConnected,false);assert.equal(studio.inert,false);
 });
+
+function sliderHarness(reducedMotion=false){
+  class Element{
+    constructor(tag){this.tag=tag;this.children=[];this.attrs={};this.values={};this.classes=new Set();this.style={setProperty:(key,value)=>{this.values[key]=value;}};this.classList={add:name=>this.classes.add(name),remove:name=>this.classes.delete(name)};}
+    append(...elements){this.children.push(...elements);}
+    setAttribute(key,value){this.attrs[key]=value;}
+  }
+  const document={createElement:tag=>new Element(tag)};
+  const context=helpers(document);
+  context.window={matchMedia:()=>({matches:reducedMotion})};
+  return context;
+}
+test('mirror slider animates the paired sample and manual input takes over without restarting',()=>{
+  const api=sliderHarness();
+  const stage=api.createDailyLookComparisonSlider({id:'mirror-cleanup',name:'Mirror Cleanup'});
+  const [after,before]=stage.children;
+  assert.match(after.className,/is-after/);assert.match(before.className,/is-before/);
+  assert.equal(after.children[0].src,'/portrait-samples/mirror-cleanup.v2.webp');
+  assert.equal(before.children[0].src,after.children[0].src);
+  after.children[0].onload();assert.equal(stage.classes.has('is-animating'),false,'wait for both halves before the wipe');
+  before.children[0].onload();assert.equal(stage.classes.has('is-animating'),true);
+  const range=stage.children.find(element=>element.tag==='input');
+  assert.equal(range.type,'range');assert.equal(range.min,'0');assert.equal(range.max,'100');
+  range.value='23';range.oninput();
+  assert.equal(stage.values['--reveal'],'23%');
+  assert.equal(range.attrs['aria-valuetext'],'23% before, 77% after');
+  assert.equal(stage.classes.has('is-animating'),false);
+  after.children[0].onload();assert.equal(stage.classes.has('is-animating'),false);
+  range.value='100';range.oninput();assert.equal(stage.values['--reveal'],'100%');
+  range.value='0';range.oninput();assert.equal(stage.values['--reveal'],'0%');
+});
+test('reduced motion keeps the mirror slider still and thumbnails never capture browsing gestures',()=>{
+  const api=sliderHarness(true);
+  const stage=api.createDailyLookComparisonSlider({id:'mirror-selfie-enhance',name:'Mirror Enhance'},{thumbnail:true});
+  stage.children[0].children[0].onload();
+  assert.equal(stage.classes.has('is-animating'),false);
+  assert.equal(stage.attrs['aria-hidden'],'true');
+  assert.equal(stage.children.some(element=>element.tag==='input'),false);
+  assert.equal(stage.values['--reveal'],'50%');
+});
+test('other collections retain ordinary sample images, and mirror image errors reach the fallback',()=>{
+  const api=sliderHarness();let errors=0;
+  assert.equal(api.createDailyLookComparisonSlider({id:'selfie-polish'}),null);
+  const stage=api.createDailyLookComparisonSlider({id:'mirror-cleanup'},{onError:()=>errors++});
+  stage.children[0].children[0].onerror();assert.equal(errors,1);
+});
