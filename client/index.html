@@ -20387,6 +20387,8 @@ function mediaAlbumRecord(records, albumGroupId) {
     viewOnce:false,
     pending:members.some(record => record.pending || record.kind === 'attachment-loading'),
     caption:'',
+    receiptState:members.every(record => record.receiptState === 'read') ? 'read'
+      : members.every(record => record.receiptState === 'delivered' || record.receiptState === 'read') ? 'delivered' : null,
     albumGroupId,
     albumBackingIds:members.map(record => record.id),
     images:members.map(record => ({
@@ -24774,13 +24776,21 @@ function clearReadReceiptCatchup(room) {
 // receipt. A mobile network transition can lose that one invalidation while
 // leaving the socket looking open; without a bounded fallback the ticks stay
 // gray until the peer happens to send another message. Poll only while this
-// room still has a delivered-but-unread outgoing message, then stop.
+// room still has an unconfirmed outgoing message, then stop.
+// Probe exact unconfirmed ids as well as sequence cursors. Delivery can arrive
+// out of order after a push wake-up or a slow media upload.
+function pendingDeliveryReceiptIds(room, limit = 32) {
+  return (room?.messages || []).filter(message => message.isMe && !message.pending
+    && !message.receiptState && typeof message.id === 'string'
+    && message.id.length <= 96).slice(0, limit).map(message => message.id);
+}
+
 function scheduleReadReceiptCatchup(room) {
   clearReadReceiptCatchup(room);
-  if (!room?.messages?.some(message => message.isMe && message.receiptState === 'delivered')) return;
+  if (!room?.messages?.some(message => message.isMe && !message.pending && message.receiptState !== 'read')) return;
   room.receiptCatchupTimers = READ_RECEIPT_CATCHUP_DELAYS.map(delay => setTimeout(() => {
     if (rooms.get(room.code) !== room) return;
-    if (!room.messages.some(message => message.isMe && message.receiptState === 'delivered')) {
+    if (!room.messages.some(message => message.isMe && !message.pending && message.receiptState !== 'read')) {
       clearReadReceiptCatchup(room);
       return;
     }
@@ -24790,6 +24800,7 @@ function scheduleReadReceiptCatchup(room) {
 
 function handleReadReceipts(room, receipts) {
   if (!receipts || !receipts.length) return;
+  const changedAlbums = new Set();
   for (const { msgId, seq, deliveredAt, readAt, deleteTimerSeconds = 0 } of receipts) {
     // Advance cursors for every acknowledged server record, including an
     // older item no longer held in this device's bounded local history.
@@ -24797,6 +24808,7 @@ function handleReadReceipts(room, receipts) {
     if (seq && readAt && seq > room.lastReadReceiptSeq) room.lastReadReceiptSeq = seq;
     const rec = room.messages.find(m => m.id === msgId);
     if (!rec) continue;
+    if (rec.albumGroupId) changedAlbums.add(rec.albumGroupId);
     const previousReceiptState = rec.receiptState;
     rec.deleteTimerSeconds = deleteTimerSeconds;
     if (deliveredAt) rec.deliveredAt = deliveredAt;
@@ -24831,7 +24843,17 @@ function handleReadReceipts(room, receipts) {
       scheduleSecureNativeHistoryCache(room, [rec]);
     }
   }
-  if (room.messages.some(message => message.isMe && message.receiptState === 'delivered')) {
+  // Album bubbles use the first backing id, but any member can acknowledge
+  // last. Patch that one tick without repainting or shifting the conversation.
+  if (room.code === activeRoomCode) for (const albumGroupId of changedAlbums) {
+    const album = mediaAlbumRecord(room.messages, albumGroupId);
+    const el = album && document.getElementById(`receipt-${album.id}`);
+    if (!el) continue;
+    el.textContent = album.receiptState ? '✓✓' : '✓';
+    el.classList.toggle('delivered', album.receiptState === 'delivered');
+    el.classList.toggle('read', album.receiptState === 'read');
+  }
+  if (room.messages.some(message => message.isMe && !message.pending && message.receiptState !== 'read')) {
     if (typeof scheduleReadReceiptCatchup === 'function') scheduleReadReceiptCatchup(room);
   } else if (typeof clearReadReceiptCatchup === 'function') clearReadReceiptCatchup(room);
 }
@@ -26097,6 +26119,7 @@ function inboxConversationCredentials() {
     token:room.token,
     lastSeq:room.lastSeq || 0,
     lastReceiptSeq:room.lastReceiptSeq || 0,
+    pendingReceiptIds:pendingDeliveryReceiptIds(room, 8),
     lastReadReceiptSeq:room.lastReadReceiptSeq || 0,
     lastReactionSeq:room.lastReactionSeq || 0,
     lastDeletionSeq:room.lastDeletionSeq || 0,
@@ -26255,7 +26278,7 @@ async function doPoll(room) {
   if (room.isPollRunning) { room.pollAfterHistoryRestore = true; return; }
   room.isPollRunning = true;
   try {
-    const data = await api('/api/poll', { code: room.code, token: room.token, lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReadReceiptSeq: room.lastReadReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq });
+    const data = await api('/api/poll', { code: room.code, token: room.token, lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReadReceiptSeq: room.lastReadReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq, pendingReceiptIds:pendingDeliveryReceiptIds(room) });
 
     if (data.roomGone) {
       // A single roomGone response is not trusted on its own —
@@ -30161,6 +30184,7 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
     });
     if (result?.error) throw new Error(result.error);
     rec.pending = false;
+    scheduleReadReceiptCatchup(room);
     if (room.code === activeRoomCode && !options.deferRender) renderChatBody(room);
     else if (!options.deferRender) secureNativeStoreMessage(room, rec);
     return rec;

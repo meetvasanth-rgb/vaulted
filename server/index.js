@@ -1493,6 +1493,14 @@ function dailyLookUsage(account, now = Date.now()) {
   };
 }
 
+// Bounded, exact receipt repair requests. A newer message's sequence does
+// not prove delivery of older messages; room ownership is still checked by
+// the poll/inbox handlers before these ids can match a sender's records.
+function pendingReceiptIdSet(value, limit = 32) {
+  return new Set(Array.isArray(value) ? value.slice(0, limit)
+    .filter(id => typeof id === 'string' && id.length > 0 && id.length <= 96) : []);
+}
+
 function parseDailyLookImage(value) {
   if (typeof value !== 'string') return null;
   const match = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
@@ -3337,6 +3345,7 @@ function bodyLimitFor(pathname, req) {
   if (pathname === '/api/account/register') return 1100 * 1024;
   if (pathname === '/api/account/profile') return BODY_LIMIT_PROFILE;
   if (pathname === '/api/groups/profile-image' || pathname === '/api/groups/rekey' || pathname === '/api/groups/add-members') return BODY_LIMIT_GROUP_PROFILE;
+  if (pathname === '/api/inbox/sync') return 16 * 1024;
   if (pathname === '/api/account/daily-look') return BODY_LIMIT_DAILY_LOOK;
   if (pathname === '/api/account/avatar-suggest') return 1300 * 1024;
   if (pathname === '/api/status/publish') return BODY_LIMIT_STATUS;
@@ -4790,8 +4799,9 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       const lastReadReceiptSeq = Number.parseInt(item.lastReadReceiptSeq || 0, 10);
       const lastReactionSeq = Number.parseInt(item.lastReactionSeq || 0, 10);
       const lastDeletionSeq = Number.parseInt(item.lastDeletionSeq || 0, 10);
+      const pendingReceiptIds = pendingReceiptIdSet(item.pendingReceiptIds, 8);
       const receiptChanged = room.msgs.some(msg => msg.type === 'message' && messageFromToken(msg, item.token) &&
-        msg.deliveredAt && (msg.seq > lastReceiptSeq || (msg.readAt && (hasReadReceiptCursor ? msg.seq > lastReadReceiptSeq : !msg.readReported))));
+        msg.deliveredAt && (pendingReceiptIds.has(msg.id) || msg.seq > lastReceiptSeq || (msg.readAt && (hasReadReceiptCursor ? msg.seq > lastReadReceiptSeq : !msg.readReported))));
       const peerMessageChanged = room.msgs.some(msg => msg.seq > lastSeq && !msg.deleted && !messageFromToken(msg, item.token));
       const activity = peerActivity(room, item.token);
       const typing = activity !== null;
@@ -6458,6 +6468,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const token = d.token;
     const clientLastSeq = parseInt(d.lastSeq||0, 10);
     const lastReceiptSeq = parseInt(d.lastReceiptSeq||0, 10);
+    const pendingReceiptIds = pendingReceiptIdSet(d.pendingReceiptIds);
     const hasReadReceiptCursor = d.lastReadReceiptSeq !== undefined;
     const lastReadReceiptSeq = parseInt(d.lastReadReceiptSeq||0, 10);
     const lastReactionSeq = parseInt(d.lastReactionSeq||0, 10);
@@ -6556,7 +6567,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       // retry after a dropped mobile request and independent across devices.
       // Keep the old one-shot flag only for compatibility with older shells.
       const readChanged = msg.readAt && (hasReadReceiptCursor ? msg.seq > lastReadReceiptSeq : !msg.readReported);
-      if (msg.seq > lastReceiptSeq || readChanged) {
+      if (msg.seq > lastReceiptSeq || readChanged || pendingReceiptIds.has(msg.id)) {
         readReceipts.push({ msgId: msg.id, seq: msg.seq, deliveredAt: msg.deliveredAt, readAt: msg.readAt || null, deleteTimerSeconds:messageDeleteTimer(room, msg) });
         if (msg.readAt && !hasReadReceiptCursor) msg.readReported = true;
       }

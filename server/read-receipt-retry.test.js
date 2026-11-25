@@ -49,4 +49,21 @@ test('a lost read-receipt response is replayed per device until its read cursor 
   await post(base,'/api/poll',{code:sender.code,token:sender.token,lastSeq:sequence,lastReceiptSeq:sequence});
   const secondDevice=await post(base,'/api/poll',cursor);
   assert.equal(secondDevice.readReceipts.some(receipt=>receipt.msgId==='retry-read'),true);
+
+  await t.test('an image delivered after a newer text is recovered by its exact id, without exposing peer receipts', async()=>{
+    await post(base,'/api/send',{code:sender.code,token:sender.token,msgId:'idle-image',content:'encrypted-image'});
+    await post(base,'/api/send',{code:sender.code,token:sender.token,msgId:'newer-text',content:'encrypted-text'});
+    await post(base,'/api/send',{code:sender.code,token:reader.token,msgId:'peer-only',content:'peer-ciphertext'});
+    await post(base,'/api/mark-delivered',{code:sender.code,token:reader.token,msgId:'newer-text'});
+    const newer=await post(base,'/api/poll',{...cursor,lastReceiptSeq:0,lastReadReceiptSeq:999});
+    const newerSeq=newer.readReceipts.find(receipt=>receipt.msgId==='newer-text').seq;
+    await post(base,'/api/mark-delivered',{code:sender.code,token:reader.token,msgId:'idle-image'});
+    const advanced={...cursor,lastReceiptSeq:newerSeq,lastReadReceiptSeq:999};
+    const skipped=await post(base,'/api/poll',advanced);
+    assert.equal(skipped.readReceipts.some(receipt=>receipt.msgId==='idle-image'),false,'reproduces the sequence-cursor race');
+    const repaired=await post(base,'/api/poll',{...advanced,pendingReceiptIds:['idle-image','peer-only']});
+    assert.equal(repaired.readReceipts.some(receipt=>receipt.msgId==='idle-image' && receipt.deliveredAt>0),true);
+    assert.equal(repaired.readReceipts.some(receipt=>receipt.msgId==='peer-only'),false,'receipt repair stays scoped to sender-owned messages');
+  });
+
 });
