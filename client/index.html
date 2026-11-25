@@ -14475,12 +14475,13 @@ function renderDailyLookStyles(styles = []) {
   const previousStyleScroll = holder.scrollLeft;
   holder.hidden = false;
   if (collectionHolder) collectionHolder.hidden = false;
-  styles = styles.filter(style => style.id !== AVATAR_STYLE_ID && style.collection !== 'Professional');
-  const featured = styles.find(style => style.collection === 'Surprise Me' && style.available !== false)
+  const collectionOrder = ['Selfies', 'Face Booster', 'Mirror Selfies', 'Family & Friends', 'Signature Studio', 'Lifestyle'];
+  styles = styles.filter(style => style.id !== AVATAR_STYLE_ID && style.collection !== 'Professional' && collectionOrder.includes(style.collection));
+  const featured = styles.find(style => style.collection === 'Selfies' && style.available !== false)
     || styles.find(style => style.featured && style.available !== false) || styles.find(style => style.available !== false) || styles[0];
   if (!styles.some(style => style.id === dailyLookStyleId && style.available !== false)) dailyLookStyleId = featured?.id || null;
   const selectedStyle = styles.find(style => style.id === dailyLookStyleId) || featured;
-  const collections = [...new Set(styles.map(style => style.collection || 'Portraits'))];
+  const collections = collectionOrder.filter(collection => styles.some(style => style.collection === collection));
   if (!collections.includes(dailyLookCollectionId)) dailyLookCollectionId = selectedStyle?.collection || collections[0] || null;
   if (blemishControl) blemishControl.hidden = !['Selfies', 'Face Booster'].includes(dailyLookCollectionId);
   refreshDailyLookGenerateCopy();
