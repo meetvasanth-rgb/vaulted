@@ -3120,12 +3120,12 @@ html.vaultlix-native-android .emergency-sheet{
 .daily-look-collections{display:flex;gap:18px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:none;margin:0 0 14px;padding:3px 2px 9px;border-bottom:1px solid #EFE7EA;-webkit-overflow-scrolling:touch}.daily-look-collections::-webkit-scrollbar,.daily-look-styles::-webkit-scrollbar{display:none}
 .daily-look-collection{position:relative;flex:0 0 auto;min-height:44px;padding:8px 2px;background:none;border:0;border-radius:0;color:#8B7780;display:flex;align-items:center;gap:6px;font:650 11px/1.2 'Manrope',sans-serif;white-space:nowrap;scroll-snap-align:center;box-shadow:none;transition:color .2s ease}.daily-look-collection-icon{width:17px;height:17px;display:grid;place-items:center}.daily-look-collection-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.daily-look-collection.selected{color:#6B1F3A;background:none;box-shadow:none}.daily-look-collection.selected:after{content:'';position:absolute;bottom:-8px;left:0;right:0;height:3px;border-radius:3px;background:#6B1F3A}.daily-look-collection:focus-visible,.daily-look-style:focus-visible{outline:2px solid #6B1F3A;outline-offset:3px}
 .daily-look-styles{display:flex;gap:10px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:none;margin:0 0 16px;padding:3px 3px 9px;-webkit-overflow-scrolling:touch}.daily-look-style{flex:0 0 136px;min-height:142px;padding:12px;border:1px solid #E4D8DE;border-radius:17px;background:#fff;scroll-snap-align:center;animation:none;transition:border-color .2s ease,background .2s ease;box-sizing:border-box}.daily-look-style.selected{padding:11px;border:2px solid #6B1F3A;background:#FCF6F8}.daily-look-style strong{padding-right:0;font-size:12px}.daily-look-style span{font-size:10px;line-height:1.4}.daily-look-style:disabled{opacity:.5}.daily-look-style em{position:static;display:inline-block;margin-top:8px;font-size:7px}.daily-look-style-art{height:46px;margin-bottom:9px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(135deg,#F5E9EE,#E5D3DC);color:#84415D}.daily-look-style-art svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}.daily-look-card .daily-look-style,.daily-look-card .daily-look-collection{animation:none}.daily-look-card .daily-look-collection.selected{box-shadow:none}.daily-look-style:nth-child(3n+2) .daily-look-style-art{background:linear-gradient(135deg,#FFF3DC,#EEDAD2)}.daily-look-style:nth-child(3n) .daily-look-style-art{background:linear-gradient(135deg,#E9ECEF,#D8DCE3)}
-.daily-look-creation{position:fixed;inset:0;z-index:12020;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;overflow:hidden;padding:calc(24px + env(safe-area-inset-top)) 22px calc(24px + env(safe-area-inset-bottom));background:linear-gradient(155deg,#542039,#29121F);color:#fff;text-align:center;isolation:isolate}.daily-look-creation[hidden]{display:none}.daily-look-silk{position:absolute;inset:-10%;width:120%;height:120%;opacity:.25;pointer-events:none;animation:daily-look-woven-drift 12s ease-in-out infinite}.daily-look-silk path{fill:none;stroke:#D4A0B6;stroke-width:46;stroke-linecap:round}.daily-look-silk path:nth-child(2){stroke:#8D4B69;stroke-width:75}.daily-look-silk path:nth-child(3){stroke:#F5D4E1;stroke-width:12}
-.daily-look-processing-photo{position:relative;z-index:1;width:min(82vw,350px);height:min(53svh,490px);overflow:hidden;border:1px solid rgba(255,255,255,.15);border-radius:24px;background:#26121E;box-shadow:0 20px 60px #14071255}.daily-look-processing-photo img{width:100%;height:100%;object-fit:contain;opacity:.84}.daily-look-processing-photo:after{content:'';position:absolute;inset:0;background:linear-gradient(160deg,#A45B7822,transparent 50%,#32132644);pointer-events:none}.daily-look-processing-grain{position:absolute;inset:-20%;pointer-events:none;opacity:.28;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Cpath fill='%23fff' filter='url(%23n)' d='M0 0h180v180H0z'/%3E%3C/svg%3E");animation:daily-look-grain-drift 1.2s steps(4,end) infinite}.daily-look-processing-weave{position:absolute;inset:-25%;pointer-events:none;background:repeating-linear-gradient(112deg,transparent 0 44px,#F4D1DF30 46px,transparent 49px 94px);animation:daily-look-weave-pass 6s ease-in-out infinite}
+.daily-look-creation{position:fixed;inset:0;z-index:12020;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;overflow:hidden;padding:calc(24px + env(safe-area-inset-top)) 22px calc(24px + env(safe-area-inset-bottom));background:linear-gradient(155deg,#211C22,#121014);color:#fff;text-align:center;isolation:isolate}.daily-look-creation[hidden]{display:none}
+.daily-look-processing-photo{position:relative;z-index:1;width:min(82vw,350px);height:min(53svh,490px);overflow:hidden;border:1px solid rgba(255,255,255,.15);border-radius:24px;background:#26121E;box-shadow:0 20px 60px #14071255}.daily-look-processing-photo img{width:100%;height:100%;object-fit:contain;opacity:.84}.daily-look-processing-photo.has-sand>img{opacity:0}.daily-look-processing-photo.has-sand .daily-look-processing-grain{display:none}.daily-look-sand-canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none}.daily-look-processing-grain{position:absolute;inset:-20%;pointer-events:none;opacity:.65;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Cpath fill='%23fff' filter='url(%23n)' d='M0 0h180v180H0z'/%3E%3C/svg%3E");animation:daily-look-grain-drift 1.2s steps(4,end) infinite}
 .daily-look-creation-copy{position:relative;z-index:2;width:min(100%,360px)}.daily-look-creation-copy strong{display:block;font:750 20px/1.3 'Manrope',sans-serif}.daily-look-creation-copy span{display:block;min-height:3em;max-width:290px;margin:10px auto 0;color:#F0D7E0;font:550 12px/1.5 'Manrope',sans-serif}.daily-look-creation-copy.is-changing span{animation:daily-look-caption-enter .45s ease both}.daily-look-creation-copy small{display:block;margin:14px auto 0;color:#E6C9D6;font:600 10px/1.4 'Manrope',sans-serif}.daily-look-creation-progress{height:3px;overflow:hidden;margin:15px 30px 0;border-radius:99px;background:#FFFFFF20}.daily-look-creation-progress b{display:block;width:40%;height:100%;border-radius:inherit;background:linear-gradient(90deg,transparent,#F3CAD7,transparent);animation:daily-look-silk-progress 2.6s ease-in-out infinite}
-@keyframes daily-look-woven-drift{0%,100%{transform:translate3d(-2%,0,0) rotate(-3deg)}50%{transform:translate3d(2%,2%,0) rotate(3deg)}}@keyframes daily-look-grain-drift{0%,100%{transform:translate3d(0,0,0);opacity:.25}25%{transform:translate3d(-3%,2%,0);opacity:.32}50%{transform:translate3d(3%,-3%,0);opacity:.22}75%{transform:translate3d(-2%,-1%,0);opacity:.3}}@keyframes daily-look-weave-pass{0%,100%{transform:translate3d(-7%,-3%,0);opacity:.3}50%{transform:translate3d(7%,3%,0);opacity:.8}}@keyframes daily-look-caption-enter{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}@keyframes daily-look-silk-progress{0%{transform:translateX(-115%)}60%,100%{transform:translateX(350%)}}
+@keyframes daily-look-grain-drift{0%,100%{transform:translate3d(0,0,0);opacity:.25}25%{transform:translate3d(-3%,2%,0);opacity:.32}50%{transform:translate3d(3%,-3%,0);opacity:.22}75%{transform:translate3d(-2%,-1%,0);opacity:.3}}@keyframes daily-look-caption-enter{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}@keyframes daily-look-silk-progress{0%{transform:translateX(-115%)}60%,100%{transform:translateX(350%)}}
 .daily-look-preview.result-reveal img{animation:daily-look-result-reveal .6s ease-out both}@keyframes daily-look-result-reveal{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
-@media(prefers-reduced-motion:reduce){.daily-look-silk,.daily-look-processing-grain,.daily-look-processing-weave,.daily-look-creation-copy.is-changing span,.daily-look-creation-progress b,.daily-look-preview.result-reveal img{animation:none!important}.daily-look-processing-grain{opacity:.12}.daily-look-collection,.daily-look-style{scroll-behavior:auto;transition:none!important}}
+@media(prefers-reduced-motion:reduce){.daily-look-processing-grain,.daily-look-creation-copy.is-changing span,.daily-look-creation-progress b,.daily-look-preview.result-reveal img{animation:none!important}.daily-look-processing-grain{opacity:.12}.daily-look-collection,.daily-look-style{scroll-behavior:auto;transition:none!important}}
 @media(max-height:620px){.daily-look-creation{gap:12px}.daily-look-processing-photo{height:40svh}.daily-look-creation-copy strong{font-size:17px}}
 
 .daily-look-consent{padding:11px 12px;border-radius:12px;background:#F7F1F3}
@@ -14935,6 +14935,88 @@ async function generateDailyLook() {
 }
 
 let dailyLookCreationTimer = null;
+let dailyLookSandCleanup = null;
+
+// Bounded source-coloured grains for the waiting animation only. These pixels
+// never become the result, get uploaded, or enter the persistent media cache.
+function dailyLookSandFrame(source, width, height, seed) {
+  const pixels = new Uint8ClampedArray(width * height * 4);
+  let state = seed >>> 0 || 1;
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    state ^= state << 13; state ^= state >>> 17; state ^= state << 5;
+    const random = state >>> 0;
+    const sx = Math.max(0, Math.min(width - 1, x + (random % 5) - 2));
+    const sy = Math.max(0, Math.min(height - 1, y + ((random >>> 8) % 5) - 2));
+    const from = (sy * width + sx) * 4, to = (y * width + x) * 4;
+    const luminance = source[from] * .2126 + source[from + 1] * .7152 + source[from + 2] * .0722;
+    const grain = ((random >>> 16) & 255) - 128;
+    for (let channel = 0; channel < 3; channel++) {
+      pixels[to + channel] = ((random >>> 24) & 15) === 0
+        ? luminance * .35 + 160
+        : source[from + channel] * .86 + luminance * .14 + grain * .84;
+    }
+    pixels[to + 3] = 255;
+  }
+  return pixels;
+}
+
+function startDailyLookSandAnimation(photo, stage) {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return () => {};
+  let frameRequest = null, disposed = false, sourcePixels = null;
+  const frames = [];
+  const canvas = document.createElement('canvas');
+  const scratch = document.createElement('canvas');
+  canvas.className = 'daily-look-sand-canvas';
+  canvas.setAttribute('aria-hidden', 'true');
+  let context, sourceContext;
+  try {
+    context = canvas.getContext('2d', { alpha:false });
+    sourceContext = scratch.getContext('2d', { willReadFrequently:true });
+  } catch (error) { return () => {}; }
+  if (!context || !sourceContext) return () => {};
+  const cleanup = () => {
+    disposed = true;
+    if (frameRequest !== null) cancelAnimationFrame(frameRequest);
+    for (const frame of frames) frame.data.fill(0);
+    frames.length = 0;
+    sourcePixels?.fill(0);
+    canvas.width = canvas.height = scratch.width = scratch.height = 0;
+    canvas.remove(); stage.classList.remove('has-sand');
+  };
+  try {
+    const scale = Math.min(1, 320 / Math.max(photo.naturalWidth, photo.naturalHeight));
+    const width = Math.max(1, Math.round(photo.naturalWidth * scale));
+    const height = Math.max(1, Math.round(photo.naturalHeight * scale));
+    canvas.width = scratch.width = width; canvas.height = scratch.height = height;
+    sourceContext.drawImage(photo, 0, 0, width, height);
+    sourcePixels = sourceContext.getImageData(0, 0, width, height).data;
+    stage.append(canvas);
+    let index = 0, lastPaint = 0;
+    const play = timestamp => {
+      if (disposed) return;
+      if (timestamp - lastPaint >= 90) {
+        context.putImageData(frames[index++ % frames.length], 0, 0);
+        lastPaint = timestamp;
+      }
+      frameRequest = requestAnimationFrame(play);
+    };
+    const prepare = () => {
+      if (disposed) return;
+      try {
+        const frame = context.createImageData(width, height);
+        frame.data.set(dailyLookSandFrame(sourcePixels, width, height, 0x6b1f3a + frames.length * 7919));
+        frames.push(frame);
+        if (frames.length === 1) { context.putImageData(frame, 0, 0); stage.classList.add('has-sand'); }
+        // Yield after each small frame so Android input and captions remain
+        // responsive; playback reuses these six buffers instead of re-decoding.
+        frameRequest = requestAnimationFrame(frames.length < 6 ? prepare : play);
+      } catch (error) { cleanup(); }
+    };
+    frameRequest = requestAnimationFrame(prepare);
+  } catch (error) { cleanup(); }
+  return cleanup;
+}
+
 function startDailyLookCreationAnimation() {
   const overlay = document.getElementById('daily-look-overlay');
   if (!overlay) return;
@@ -14946,13 +15028,19 @@ function startDailyLookCreationAnimation() {
   layer.setAttribute('aria-modal', 'true');
   layer.setAttribute('aria-label', 'Creating your portrait');
   layer.tabIndex = -1;
-  layer.innerHTML = `<svg class="daily-look-silk" viewBox="0 0 360 700" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><path d="M-40 185 C80 70 245 305 405 135"/><path d="M-35 350 C90 190 250 520 400 300"/><path d="M-30 490 C120 360 250 620 410 455"/></svg><div class="daily-look-processing-photo" aria-hidden="true"><div class="daily-look-processing-grain"></div><div class="daily-look-processing-weave"></div></div><div class="daily-look-creation-copy"><strong>Creating your portrait</strong><span>Hold that pose. The pixels are getting dressed.</span><div class="daily-look-creation-progress" aria-hidden="true"><b></b></div><small>Don’t close this screen</small></div>`;
-  // Use a DOM property rather than interpolating a private photo into markup.
+  layer.innerHTML = `<div class="daily-look-processing-photo" aria-hidden="true"><div class="daily-look-processing-grain"></div></div><div class="daily-look-creation-copy"><strong>Creating your portrait</strong><span>Hold that pose. The pixels are getting dressed.</span><div class="daily-look-creation-progress" aria-hidden="true"><b></b></div><small>Don’t close this screen</small></div>`;
+  // The sand preview reads only the selected local photo. It cannot alter it.
   if (dailyLookSourceImage) {
     const photo = document.createElement('img');
-    photo.src = dailyLookSourceImage;
     photo.alt = '';
-    layer.querySelector('.daily-look-processing-photo').prepend(photo);
+    const stage = layer.querySelector('.daily-look-processing-photo');
+    stage.prepend(photo);
+    let sandCleanup = null;
+    dailyLookSandCleanup = () => { photo.onload = null; sandCleanup?.(); };
+    photo.onload = () => {
+      if (!sandCleanup && layer.isConnected) sandCleanup = startDailyLookSandAnimation(photo, stage);
+    };
+    photo.src = dailyLookSourceImage;
   }
   overlay.append(layer);
   const card = overlay.querySelector('.daily-look-card');
@@ -14985,6 +15073,8 @@ function startDailyLookCreationAnimation() {
 }
 
 function stopDailyLookCreationAnimation() {
+  dailyLookSandCleanup?.();
+  dailyLookSandCleanup = null;
   if (dailyLookCreationTimer) window.clearInterval(dailyLookCreationTimer);
   dailyLookCreationTimer = null;
   document.querySelector('#daily-look-overlay .daily-look-creation')?.remove();

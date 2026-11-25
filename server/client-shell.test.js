@@ -74,7 +74,8 @@ test('the interface motion layer animates screens, sheets and portrait choices a
   assert.match(source, /'Lifestyle':'<svg/);
   assert.match(source, /@keyframes vx-collection-enter/);
   assert.match(source, /@keyframes daily-look-grain-drift/);
-  assert.match(source, /@keyframes daily-look-weave-pass/);
+  assert.match(source, /function dailyLookSandFrame\(/);
+  assert.match(source, /function startDailyLookSandAnimation\(/);
   assert.match(source, /@keyframes daily-look-silk-progress/);
   assert.match(source, /class="daily-look-processing-photo"/);
   assert.match(source, /class="daily-look-processing-grain"/);
