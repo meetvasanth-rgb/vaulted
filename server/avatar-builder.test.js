@@ -175,7 +175,7 @@ test('server: the route is rate limited, moderated, key-gated, and never stores 
   assert.match(route, /process\.env\.OPENAI_AVATAR_MODEL \|\| 'gpt-4\.1-mini'/);
   assert.match(route, /Cache-Control', 'no-store'/);
   assert.doesNotMatch(route, /persistAccount|writeFile|dailyLookGenerationCount/, 'nothing is saved and it does not use a Daily Look creation');
-  assert.match(server, /pathname === '\/api\/account\/daily-look' \|\| pathname === '\/api\/account\/avatar-suggest'\) return BODY_LIMIT_DAILY_LOOK/);
+  assert.match(server, /pathname === '\/api\/account\/avatar-suggest'\) return 1300 \* 1024/);
 });
 
 test('the page loads the builder on demand and the sheet is wired to the right server route', () => {

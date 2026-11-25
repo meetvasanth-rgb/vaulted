@@ -23,9 +23,9 @@ test('Professional and all five retired presets are absent from the selectable s
     assert.equal(styles.some(style=>style.id===id),false);
   }
 });
-test('first version exposes exactly two family enhancements and one mirror enhancement using OpenAI',()=>{
-  assert.deepEqual(Array.from(styles.filter(style=>style.collection==='Family & Friends'),style=>style.id),['family-natural-group','family-indoor-rescue']);
-  assert.deepEqual(Array.from(styles.filter(style=>style.collection==='Mirror Selfies'),style=>style.id),['mirror-selfie-enhance']);
+test('catalog exposes four family enhancements and two mirror enhancements using OpenAI',()=>{
+  assert.deepEqual(Array.from(styles.filter(style=>style.collection==='Family & Friends'),style=>style.id),['family-natural-group','family-indoor-rescue','family-celebration','family-outdoor-balance']);
+  assert.deepEqual(Array.from(styles.filter(style=>style.collection==='Mirror Selfies'),style=>style.id),['mirror-cleanup','mirror-selfie-enhance']);
   for(const style of styles.filter(style=>['Family & Friends','Mirror Selfies'].includes(style.collection))) {
     assert.equal(style.provider,'openai');
     assert.equal(context.publicDailyLookStyles().find(item=>item.id===style.id).available,true);
@@ -49,4 +49,28 @@ test('mirror enhancement keeps occlusions, reflection geometry and the original 
   assert.match(prompt,/Never flip the image, remove the phone, reveal or invent a face or body area hidden behind it/);
   assert.match(prompt,/without introducing a mirror, phone or reflection/);
   assert.doesNotMatch(prompt,/Blemish setting|studio-quality/);
+});
+
+
+test('Celebration and Outdoor Balance correct every face without inventing an occasion or weather',()=>{
+  const celebration=context.dailyLookDirectedPrompt(styles.find(s=>s.id==='family-celebration'),0);
+  const outdoor=context.dailyLookDirectedPrompt(styles.find(s=>s.id==='family-outdoor-balance'),0);
+  for(const prompt of [celebration,outdoor]) {
+    assert.match(prompt,/every person's identity independently/);
+    assert.match(prompt,/each visible face independently|every visible face separately/);
+    assert.match(prompt,/skin hue and depth/);
+  }
+  assert.match(celebration,/without adding one/);
+  assert.match(outdoor,/without introducing an outdoor scene/);
+  assert.match(outdoor,/Do not add golden-hour light/);
+});
+test('Mirror Cleanup permits only local surface marks and protects phones, people and occlusions',()=>{
+  const prompt=context.dailyLookDirectedPrompt(styles.find(s=>s.id==='mirror-cleanup'),0);
+  assert.match(prompt,/only exception to scene preservation/);
+  assert.match(prompt,/away from people and their reflections/);
+  assert.match(prompt,/leave ambiguous marks unchanged/);
+  assert.match(prompt,/Never clean across a face/);
+  assert.match(prompt,/reveal hidden facial features/);
+  assert.doesNotMatch(prompt,/Improve only exposure/);
+  assert.match(context.dailyLookDirectedPrompt(styles.find(s=>s.id==='mirror-selfie-enhance'),0),/Improve only exposure/);
 });

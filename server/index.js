@@ -346,6 +346,18 @@ For Fix Lighting and Enhance Photo, treat this as a restrained edit of the origi
     prompt:`Correct a dim or mixed-light indoor family, couple or group photograph. Analyse each face's exposure and local colour cast independently. Gently lift underexposed facial midtones and open eye-socket shadows with believable soft fill aligned to the room's existing lights; neutralise unwanted yellow, green or magenta contamination while retaining the room's natural atmosphere. Protect already bright faces and highlights. Reduce camera noise conservatively without smoothing pores or reconstructing faces. Keep all faces, ages, expressions, positions, clothing, furniture and the original setting intact. For an adequately exposed or outdoor source, make only subtle corrections; do not introduce an indoor setting or artificial studio light.`,
   },
   {
+    id:'family-celebration', name:'Celebration', note:'Natural faces, vibrant celebrations', collection:'Family & Friends', provider:'openai', kind:'curated', quality:'high',
+    prompt:`Enhance the existing family or friends celebration photograph. Balance each visible face independently under decorative lamps, stage lights or flash; gently lift shadowed faces without clipping already bright faces. Correct unwanted colour casts on skin while preserving each person's original skin hue and depth and the celebration's ambient colours. Recover highlight detail in festive clothing and jewellery and apply restrained noise reduction. Keep the exact people, expressions, arrangement, decorations, attire, background and occasion. Do not invent a festival, add decorations, change clothing, apply beauty retouching or reconstruct small faces. If there is no celebration in the source, make only natural photographic corrections without adding one.`,
+  },
+  {
+    id:'family-outdoor-balance', name:'Outdoor Balance', note:'Balanced faces in sun and shade', collection:'Family & Friends', provider:'openai', kind:'curated', quality:'high',
+    prompt:`Balance an outdoor family, couple or friends photograph with mixed sun and shade. Evaluate every visible face separately: gently open shaded eye sockets and facial midtones with believable sky fill, protect sunlit faces and bright clothing, and recover existing sky highlights where possible. Neutralise unwanted foliage-green or blue-sky casts on skin without changing anyone's natural skin hue and depth. Preserve the actual weather, time of day, shadows, scenery, arrangement and expressions. Do not add golden-hour light, replace the sky, introduce artificial bokeh or rebuild blurred faces. For an indoor source, apply restrained exposure and white-balance correction without introducing an outdoor scene.`,
+  },
+  {
+    id:'mirror-cleanup', name:'Mirror Cleanup', note:'Subtle mirror cleanup, same reflection', collection:'Mirror Selfies', provider:'openai', kind:'curated', quality:'high',
+    prompt:`Apply gentle exposure and white-balance correction to the same mirror selfie. The sole scene-editing exception is conservative removal of isolated dust specks, fingerprints or small smudges on otherwise plain mirror or background surfaces, away from people and their reflections. Never clean across a face, hair, skin, clothing, phone, hands, fingers, jewellery, text, mirror edges or reflected objects; leave ambiguous marks unchanged. Preserve the phone, case, grip, every reflection, reflected orientation, perspective, background objects, pose and all occlusions exactly. Never flip the image, remove the phone, reveal hidden facial features, remove people or objects, erase permanent skin features, reshape a body or restage the room. If this is not a mirror photograph, apply only conservative photographic correction without inventing a mirror or performing scene cleanup.`,
+  },
+  {
     id:'mirror-selfie-enhance', name:'Mirror Selfie Enhance', note:'Better light, same phone and reflection', collection:'Mirror Selfies', provider:'openai', kind:'curated', quality:'high',
     prompt:`Enhance the original mirror selfie's photographic quality: correct face exposure and mixed-light white balance, recover highlights, gently open shadows and reduce capture noise while retaining facial texture. Preserve the phone, phone case, camera, hands, fingers, grip, reflection, mirror edges, original reflected orientation, perspective, background and body pose exactly. Keep every visible person and reflection as photographed. Never flip the image, remove the phone, reveal or invent a face or body area hidden behind it, add a second reflection, clean away scene details, change clothing, reshape the body or replace the background. If this is a normal selfie rather than a mirror photograph, enhance it conservatively without introducing a mirror, phone or reflection.`,
   },
@@ -1487,7 +1499,7 @@ function parseDailyLookImage(value) {
   if (!match) return null;
   let bytes;
   try { bytes = Buffer.from(match[2], 'base64'); } catch (error) { return null; }
-  if (!bytes.length || bytes.length > 900 * 1024) return null;
+  if (!bytes.length || bytes.length > 6 * 1024 * 1024) return null;
   return { bytes, mime:`image/${match[1]}`, extension:match[1] === 'jpeg' ? 'jpg' : match[1] };
 }
 
@@ -1568,7 +1580,10 @@ function dailyLookDirectedPrompt(style, variantIndex, blemishLevel = 'soften') {
     ? dailyLookRotationItem(ENHANCER_LOOKS, variantIndex)
     : null;
   if (style.collection === 'Family & Friends' || style.collection === 'Mirror Selfies') {
-    return `${SOURCE_PHOTO_ENHANCEMENT_PROMPT}\n\nSelected enhancement: ${style.name}\n${style.prompt}`;
+    const contract = style.id === 'mirror-cleanup'
+      ? SOURCE_PHOTO_ENHANCEMENT_PROMPT.replace('Improve only exposure, white balance, highlight and shadow detail, and restrained capture noise according to the selected recipe.', 'Improve exposure, white balance, highlight and shadow detail, and restrained capture noise. As the only exception to scene preservation, allow the strictly local surface-mark cleanup described below; all identity and occlusion rules still apply.')
+      : SOURCE_PHOTO_ENHANCEMENT_PROMPT;
+    return `${contract}\n\nSelected enhancement: ${style.name}\n${style.prompt}`;
   }
   return enhancerLook
     ? `${style.prompt}\n\nSelected surprise transformation for this generation:\n${enhancerLookBrief(enhancerLook)}`
@@ -3300,7 +3315,8 @@ function serveStatic(req, res) {
 const BODY_LIMIT_SEND = 20 * 1024 * 1024;
 const BODY_LIMIT_PROFILE = 384 * 1024;
 const BODY_LIMIT_GROUP_PROFILE = 700 * 1024;
-const BODY_LIMIT_DAILY_LOOK = 1300 * 1024;
+// Prepared portrait JPEGs are bounded to 6 MiB decoded (8 MiB base64).
+const BODY_LIMIT_DAILY_LOOK = 8 * 1024 * 1024 + 64 * 1024;
 const BODY_LIMIT_STATUS = 8 * 1024 * 1024;
 const BODY_LIMIT_ADMIN_ANNOUNCEMENT = 12 * 1024 * 1024;
 const BODY_LIMIT_DEFAULT = 8 * 1024;
@@ -3321,7 +3337,8 @@ function bodyLimitFor(pathname, req) {
   if (pathname === '/api/account/register') return 1100 * 1024;
   if (pathname === '/api/account/profile') return BODY_LIMIT_PROFILE;
   if (pathname === '/api/groups/profile-image' || pathname === '/api/groups/rekey' || pathname === '/api/groups/add-members') return BODY_LIMIT_GROUP_PROFILE;
-  if (pathname === '/api/account/daily-look' || pathname === '/api/account/avatar-suggest') return BODY_LIMIT_DAILY_LOOK;
+  if (pathname === '/api/account/daily-look') return BODY_LIMIT_DAILY_LOOK;
+  if (pathname === '/api/account/avatar-suggest') return 1300 * 1024;
   if (pathname === '/api/status/publish') return BODY_LIMIT_STATUS;
   if (pathname === '/api/admin/announcements') {
     const authorization=String(req?.headers?.authorization || '');

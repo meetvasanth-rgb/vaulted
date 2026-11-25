@@ -48,11 +48,11 @@ test('Daily Look sends only an explicitly selected, reduced image, preserves its
   assert.match(client, /Permission can be withdrawn in Settings/);
   assert.match(client, /id="settings-portrait-consent-row"/);
   assert.match(client, /const prepared = await prepareDailyLookImage\(file\)/);
-  assert.match(client, /1600 \/ longestEdge/);
-  assert.match(client, /result\.length <= 1200 \* 1024/);
+  assert.match(client, /4096 \/ longestEdge/);
+  assert.match(client, /result\.length <= 8 \* 1024 \* 1024/);
   assert.match(client, /width:image\.naturalWidth, height:image\.naturalHeight/);
   assert.match(client, /sourceWidth:dailyLookSourceDimensions\?\.width, sourceHeight:dailyLookSourceDimensions\?\.height/);
-  assert.match(server, /bytes\.length > 900 \* 1024/);
+  assert.match(server, /bytes\.length > 6 \* 1024 \* 1024/);
   assert.match(server, /dailyLookSourceDimensions\(image, Number\(d\.sourceWidth\), Number\(d\.sourceHeight\)\)/);
   assert.match(server, /dailyLookProviderSize\(canvas\.sourceWidth, canvas\.sourceHeight\)/);
   assert.match(server, /resize\(sourceWidth, sourceHeight, \{ fit:'cover', position:'centre' \}\)/);

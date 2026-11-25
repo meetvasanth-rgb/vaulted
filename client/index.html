@@ -14249,17 +14249,26 @@ async function prepareDailyLookImage(file) {
     await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('Could not read this image')); image.src = sourceUrl; });
     const longestEdge = Math.max(image.naturalWidth, image.naturalHeight);
     if (!longestEdge) throw new Error('Could not read this image');
-    const scale = Math.min(1, 1600 / longestEdge);
-    const width = Math.max(1, Math.round(image.naturalWidth * scale));
-    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    // Keep small group faces readable without allocating a full 50 MP canvas.
+    // Use the same preparation for every preset so switching collections never
+    // reuses a low-resolution source or requires retaining the original file.
+    let scale = Math.min(1, 4096 / longestEdge, Math.sqrt(12 * 1000 * 1000 / (image.naturalWidth * image.naturalHeight)));
     const canvas = document.createElement('canvas');
-    canvas.width = width; canvas.height = height;
     const context = canvas.getContext('2d', { alpha:false });
-    context.fillStyle = '#FBF7F8'; context.fillRect(0, 0, width, height);
-    context.drawImage(image, 0, 0, width, height);
-    for (const quality of [.9, .84, .76, .68, .6]) {
-      const result = canvas.toDataURL('image/jpeg', quality);
-      if (result.length <= 1200 * 1024) return { image:result, width:image.naturalWidth, height:image.naturalHeight };
+    if (!context) throw new Error('Could not prepare this image');
+    // Reduce dimensions only if needed to meet the upload bound, rather than
+    // crushing fine facial detail with progressively harsher JPEG compression.
+    for (let attempt = 0; attempt < 4; attempt++, scale *= .8) {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      const width = Math.max(1, Math.round(image.naturalWidth * scale));
+      const height = Math.max(1, Math.round(image.naturalHeight * scale));
+      canvas.width = width; canvas.height = height;
+      context.fillStyle = '#FBF7F8'; context.fillRect(0, 0, width, height);
+      context.drawImage(image, 0, 0, width, height);
+      for (const quality of [.94, .92, .9, .88]) {
+        const result = canvas.toDataURL('image/jpeg', quality);
+        if (result.length <= 8 * 1024 * 1024) return { image:result, width:image.naturalWidth, height:image.naturalHeight };
+      }
     }
     throw new Error('This image could not be prepared safely');
   } finally { URL.revokeObjectURL(sourceUrl); }
