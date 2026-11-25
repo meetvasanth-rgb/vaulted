@@ -17,18 +17,24 @@ test('every visible preset has its own real, compact sample and thumbnail',async
   const catalog=JSON.parse(fs.readFileSync(path.join(root,'client/portrait-samples/catalog.json'),'utf8'));
   const api=helpers({});
   assert.equal(Object.keys(catalog).length,styles.length);
-  let total=0;
-  for(const style of styles)for(const thumbnail of [false,true]){
-    const url=api.dailyLookSampleAsset(style,thumbnail);
-    assert.equal(url,catalog[style.id][thumbnail?'thumbnail':'preview']);
+  let total=0; const checked=new Set();
+  for(const style of styles)for(const thumbnail of [false,true])for(const before of [false,true]){
+    const url=before?api.dailyLookBeforeSampleAsset(style,thumbnail):api.dailyLookSampleAsset(style,thumbnail);
+    const field=before?(thumbnail?'beforeThumbnail':'before'):(thumbnail?'thumbnail':'preview');
+    assert.equal(url,catalog[style.id][field]);
+    assert.equal(api.isDailyLookComparisonSample(style),true);
+    if(checked.has(url))continue;
+    checked.add(url);
     const file=path.join(root,'client',url); const bytes=fs.statSync(file).size;total+=bytes;
     const meta=await sharp(file).metadata();
     assert.equal(meta.format,'webp');
-    if(style.collection==='Mirror Selfies') assert.ok(meta.width/meta.height>1.4 && meta.width/meta.height<1.6,'mirror comparisons keep both portrait panels visible');
+    if(style.collection==='Mirror Selfies') assert.ok(meta.width/meta.height>1.4 && meta.width/meta.height<1.6,'paired mirror panels remain visible');
+    else assert.ok(Math.abs(meta.width/meta.height-.75)<.025,'separate before/after portraits retain matching aspect ratios');
     assert.ok(meta.width<=(thumbnail?320:768));assert.ok(meta.height<=(thumbnail?426:1024));
     assert.ok(bytes<(thumbnail?65000:250000),`${style.id} remains light to load`);
     assert.equal(meta.exif,undefined);
   }
+  assert.equal(checked.size,92);
   assert.ok(total<6*1024*1024,'full collection stays below 6 MB; thumbnails load lazily');
 });
 test('sample asset resolution rejects arbitrary paths and unshipped presets',()=>{
@@ -41,7 +47,7 @@ test('sample viewer selection and dismissal preserve the private photo and do no
   const oldFocus={isConnected:true,focus(){doc.activeElement=this;}};
   const studio={inert:false};
   class Element{
-    constructor(tag){this.tag=tag;this.children=[];this.attrs={};this.listeners={};this.isConnected=true;}
+    constructor(tag){this.tag=tag;this.children=[];this.attrs={};this.listeners={};this.isConnected=true;this.style={setProperty(){}};this.classList={add(){},remove(){}};}
     append(...nodes){this.children.push(...nodes);}
     setAttribute(k,v){this.attrs[k]=v;}
     addEventListener(k,v){this.listeners[k]=v;}
@@ -56,9 +62,10 @@ test('sample viewer selection and dismissal preserve the private photo and do no
   assert.equal(studio.inert,true);
   const overlay=doc.body.children.at(-1),dialog=overlay.children[0];
   assert.equal(dialog.attrs.role,'dialog');
-  const image=dialog.children.find(e=>e.tag==='img');
+  const comparison=dialog.children.find(e=>e.className?.includes('daily-look-slider'));
+  const image=comparison.children[0].children[0];
   assert.equal(image.src,'/portrait-samples/selfie-polish.v1.webp');
-  image.onerror();assert.equal(image.hidden,true);
+  image.onerror();assert.equal(comparison.hidden,true);
   const use=dialog.children.at(-1);use.onclick();
   assert.equal(selected,1);assert.equal(studio.inert,false);assert.equal(overlay.isConnected,false);
   assert.equal(api.dailyLookSourceImage,'private-selected-photo');
@@ -107,9 +114,12 @@ test('reduced motion keeps the mirror slider still and thumbnails never capture 
   assert.equal(stage.children.some(element=>element.tag==='input'),false);
   assert.equal(stage.values['--reveal'],'50%');
 });
-test('other collections retain ordinary sample images, and mirror image errors reach the fallback',()=>{
+test('all shipped collections receive sliders and image errors reach the fallback',()=>{
   const api=sliderHarness();let errors=0;
-  assert.equal(api.createDailyLookComparisonSlider({id:'selfie-polish'}),null);
+  const selfie=api.createDailyLookComparisonSlider({id:'selfie-polish'});
+  assert.equal(selfie.children[0].children[0].src,'/portrait-samples/selfie-polish.v1.webp');
+  assert.equal(selfie.children[1].children[0].src,'/portrait-samples/selfie-polish-before.v1.webp');
+  assert.equal(api.createDailyLookComparisonSlider({id:'unknown'}),null);
   const stage=api.createDailyLookComparisonSlider({id:'mirror-cleanup'},{onError:()=>errors++});
   stage.children[0].children[0].onerror();assert.equal(errors,1);
 });
