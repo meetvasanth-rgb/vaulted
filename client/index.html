@@ -14459,7 +14459,7 @@ function renderDailyLookStyles(styles = []) {
   }
   holder.hidden = false;
   if (collectionHolder) collectionHolder.hidden = false;
-  styles = styles.filter(style => style.id !== AVATAR_STYLE_ID);
+  styles = styles.filter(style => style.id !== AVATAR_STYLE_ID && style.collection !== 'Professional');
   const featured = styles.find(style => style.featured && style.available !== false) || styles.find(style => style.available !== false) || styles[0];
   if (!styles.some(style => style.id === dailyLookStyleId && style.available !== false)) dailyLookStyleId = featured?.id || null;
   const selectedStyle = styles.find(style => style.id === dailyLookStyleId) || featured;
@@ -14471,8 +14471,9 @@ function renderDailyLookStyles(styles = []) {
     'Surprise Me':'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.5 5.2L19 10l-5.5 1.8L12 17l-1.5-5.2L5 10l5.5-1.8L12 3Z"/><path d="m19 16 .7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7L19 16Z"/></svg>',
     'Face Booster':'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M9 10h.01M15 10h.01M9 15c2 1.5 4 1.5 6 0"/></svg>',
     'Selfies':'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="3"/><path d="m8 6 1.5-2h5L16 6"/><circle cx="12" cy="13" r="3.5"/></svg>',
+    'Family & Friends':'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="7" r="3"/><circle cx="17" cy="8" r="2.5"/><path d="M2 20v-3a6 6 0 0 1 12 0v3M15 14a5 5 0 0 1 7 5v1"/></svg>',
+    'Mirror Selfies':'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="2" width="12" height="18" rx="5"/><path d="m6 8 4-4M9 20v2"/><rect x="13" y="10" width="8" height="12" rx="2"/><path d="M16 13h2"/></svg>',
     'Signature Studio':'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20h14M7 20V9l5-5 5 5v11M10 13h4M10 16h4"/></svg>',
-    'Professional':'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V4h6v3M3 12h18M10 12v2h4v-2"/></svg>',
     'Lifestyle':'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></svg>'
   };
   if (collectionHolder) collectionHolder.replaceChildren(...collections.map((collection, index) => {

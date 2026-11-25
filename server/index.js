@@ -267,11 +267,14 @@ The result must look like a premium real photograph, not synthetic art. Do not g
 // appended to every Gemini-backed recipe, regardless of collection.
 const GEMINI_PORTRAIT_FINISH_PROMPT = `Mandatory Gemini portrait finishing: the background change and the subject relighting are one coherent edit. Re-evaluate the person's face after creating the requested setting and give the face, neck, ears, hair, clothing and body professional light that matches that setting. Keep both eyes readable, add only physically plausible catchlights, lift muddy shadows, control highlights and retain natural depth and texture. Match the person's source skin hue and depth exactly after neutralising only the original lighting cast. Never tan, darken, whiten, lighten, redden, orange-shift, grey or desaturate the skin. Improve a dull face through neutral exposure, key light and fill light only, not by recolouring, smoothing or reconstructing it. Before returning the image, verify that identity, expression, skin tone and facial proportions still match the source and that the face is not flat, dull, underexposed or disconnected from the new environment.`;
 
-const PROFESSIONAL_PORTRAIT_FINISH_PROMPT = `Mandatory Professional collection finishing: keep the requested professional environment, wardrobe, posture and composition, but make the face the visual exposure priority. Correct the person's facial white balance independently from ambient office or interior colour casts, removing unwanted yellow, orange, green, cyan or magenta contamination while preserving the exact source skin hue and depth. Use a broad neutral key and soft frontal fill to lift the eyes, eye sockets, cheeks and jaw; add restrained natural catchlights; and keep facial midtones clear and luminous with smooth highlight roll-off. The face must be at least as clearly exposed as in the source and must not remain dull, muddy, grey, dim or colour-cast. Do not brighten by whitening or recolouring the skin, and do not alter identity, expression, age, texture or facial geometry.`;
-
 const LIFESTYLE_PORTRAIT_FINISH_PROMPT = `Mandatory Lifestyle collection finishing: preserve the requested real-world atmosphere, location, wardrobe, pose and candid character, but expose and white-balance the face as carefully as a premium lifestyle photograph. Correct facial skin independently from warm café lamps, green foliage, sunset warmth or mixed ambient light so the person's exact source skin hue and depth remain natural. Use believable environmental key light plus soft local fill to keep both eyes readable, open dull eye-socket and cheek shadows, add restrained natural catchlights and retain dimensional facial texture. The setting may remain warm or dramatic, but the face must not become orange, red, green, grey, tanned, muddy, flat or underexposed. Improve facial brightness through physically coherent light and exposure only; never whiten, recolour, smooth or reconstruct the person.`;
 
 const SELFIE_PORTRAIT_FINISH_PROMPT = `Mandatory Selfies collection rules: treat the source as a real phone selfie and edit that same photograph rather than generating a new portrait. Preserve the original background, crop, camera angle, pose, gaze, expression, hairstyle, clothing, jewellery, facial geometry and every recognisable feature. Preserve the person's exact source skin hue and depth, pores, fine texture, natural asymmetry and apparent age. Do not replace or restage the environment; do not tan, whiten, lighten, reshape or slim the face; do not enlarge eyes, narrow the nose, sharpen the jaw, add makeup, remove permanent features, erase all skin texture or apply a beauty filter. Improve only the photographic capture qualities requested by the named preset. The result must look like the same selfie captured with better light and a better phone camera, never like an AI-generated studio portrait.`;
+
+// Faithful photo enhancement uses its own contract, not the studio/backdrop
+// directions intended for single-person portraits.
+const SOURCE_PHOTO_ENHANCEMENT_PROMPT = `Edit the uploaded photograph itself, not a newly generated interpretation. Keep the exact number of people and preserve every person's identity independently: face shape, facial proportions, eyes, nose, lips, teeth, skin hue and depth, age, expression, gaze, hair, facial hair, glasses and other identity markers. Preserve natural pores and skin texture, moles, freckles, birthmarks and scars. Preserve children's actual age and proportions; do not adultify or beautify them. Do not smooth, reshape, slim, whiten or tan anyone, copy one face onto another, invent hidden facial features, add or remove people, alter hands or fingers, or change body proportions.
+Preserve the source background, crop, framing, orientation, perspective, poses, spacing, clothing, jewellery, props and physical light direction. Improve only exposure, white balance, highlight and shadow detail, and restrained capture noise according to the selected recipe. Brighten faces through exposure and fill light while preserving each person's natural skin hue and depth; never make skin fairer to simulate brightness. Retain texture rather than inventing detail when a small, blurred, shadowed or partly hidden face cannot be recovered. Existing text and logos should remain as photographed; add no text, logos or watermarks. Return the same photograph with careful photographic corrections.`;
 
 const DAILY_LOOK_BLEMISH_PROMPTS = Object.freeze({
   keep:`Blemish setting — Keep natural: preserve all visible skin detail exactly, including temporary blemishes. Do not remove, soften, heal or conceal spots.`,
@@ -335,6 +338,18 @@ For Fix Lighting and Enhance Photo, treat this as a restrained edit of the origi
     prompt:`Finish the same outdoor selfie with balanced natural daylight. Recover bright sky or background detail where available, lift facial shadows with believable sky fill, neutralise reflected green or blue colour casts, control highlights and keep the actual weather and location authentic. Preserve the original background, crop and pose; do not add sunset light, fantasy skies, artificial lens flare or excessive background blur.`,
   },
   {
+    id:'family-natural-group', name:'Natural Group', note:'Balanced light for everyone, same moment', collection:'Family & Friends', provider:'openai', kind:'curated', quality:'high',
+    prompt:`Enhance this family, couple or group photograph with gentle exposure correction, accurate white balance, controlled highlights and restrained noise reduction. Evaluate every visible face separately so a darker or shadowed face is not neglected and a brighter face is not overexposed. Keep the original relative skin tones, natural differences in lighting, expressions, arrangement and background. Preserve overlaps, embraces, hands and contact between people exactly. Do not reposition anyone, restage the moment, replace the background, add makeup or retouch skin. If there is only one person, apply the same restrained correction without inventing companions.`,
+  },
+  {
+    id:'family-indoor-rescue', name:'Indoor Rescue', note:'Clearer faces in dim or mixed room light', collection:'Family & Friends', provider:'openai', kind:'curated', quality:'high',
+    prompt:`Correct a dim or mixed-light indoor family, couple or group photograph. Analyse each face's exposure and local colour cast independently. Gently lift underexposed facial midtones and open eye-socket shadows with believable soft fill aligned to the room's existing lights; neutralise unwanted yellow, green or magenta contamination while retaining the room's natural atmosphere. Protect already bright faces and highlights. Reduce camera noise conservatively without smoothing pores or reconstructing faces. Keep all faces, ages, expressions, positions, clothing, furniture and the original setting intact. For an adequately exposed or outdoor source, make only subtle corrections; do not introduce an indoor setting or artificial studio light.`,
+  },
+  {
+    id:'mirror-selfie-enhance', name:'Mirror Selfie Enhance', note:'Better light, same phone and reflection', collection:'Mirror Selfies', provider:'openai', kind:'curated', quality:'high',
+    prompt:`Enhance the original mirror selfie's photographic quality: correct face exposure and mixed-light white balance, recover highlights, gently open shadows and reduce capture noise while retaining facial texture. Preserve the phone, phone case, camera, hands, fingers, grip, reflection, mirror edges, original reflected orientation, perspective, background and body pose exactly. Keep every visible person and reflection as photographed. Never flip the image, remove the phone, reveal or invent a face or body area hidden behind it, add a second reflection, clean away scene details, change clothing, reshape the body or replace the background. If this is a normal selfie rather than a mirror photograph, enhance it conservatively without introducing a mirror, phone or reflection.`,
+  },
+  {
     id:'soft-daylight', name:'Soft Daylight', note:'Clean window-light freshness', collection:'Face Booster', kind:'curated', quality:'high',
     prompt:`Preserve the scene and pose while refining the photograph into soft natural daylight. Use a large window-like key that agrees with the existing light direction, gentle facial fill, neutral whites, accurate skin colour, open shadows and smooth highlight roll-off. Keep realistic skin texture and avoid artificial glow, background replacement or beauty-filter styling.`,
   },
@@ -377,26 +392,6 @@ Apply only restrained natural touch-up: gently reduce minor temporary blemishes,
   {
     id:'luxury-minimal', name:'Luxury Minimal', note:'High-end portrait, no clutter', collection:'Signature Studio', provider:'gemini', kind:'curated', quality:'high',
     prompt:`Create a high-end minimalist portrait with refined neutral materials, restrained colour and generous negative space. Give the person precise editorial lighting: a broad flattering key, gentle facial fill, natural catchlights, controlled skin highlights and subtle separation, correcting dull exposure without changing skin tone or facial structure. Keep the person unmistakably themselves and preserve their wardrobe style. The setting should feel current and architecturally plausible, with no fake luxury logos, ornate props or dated decor.`,
-  },
-  {
-    id:'modern-professional', name:'Modern Professional', note:'Approachable profile portrait', collection:'Professional', kind:'curated', quality:'high',
-    prompt:`Create an approachable modern professional portrait suitable for a profile or company page. Use a clean contemporary office or softly neutral workspace, eye-level camera, natural posture and confident but friendly expression. Preserve the person's actual clothing unless a minor tidy-up is needed; do not force a suit, tie or corporate uniform.`,
-  },
-  {
-    id:'executive-portrait', name:'Executive', note:'Confident and understated', collection:'Professional', kind:'curated', quality:'high',
-    prompt:`Create an understated executive portrait in a premium modern office with restrained architecture and natural daylight. Use composed posture, sophisticated neutral grading and realistic depth. Preserve age, body shape and identity exactly. Clothing may be tidied into a polished version of the source style but must not become costume-like or overly formal.`,
-  },
-  {
-    id:'creative-professional', name:'Creative Professional', note:'Polished with more personality', collection:'Professional', provider:'gemini', kind:'curated', quality:'high',
-    prompt:`Create a polished portrait for a designer, founder, artist or creative professional. Relight the face and body with a directional broad soft key, gentle fill, natural catchlights and subtle subject separation so the complexion is clear, dimensional and naturally exposed. Use a tasteful contemporary studio or workspace with subtle colour and relaxed posture. Keep the environment believable and uncluttered, preserve wardrobe personality and avoid generic corporate stock-photo styling.`,
-  },
-  {
-    id:'healthcare-professional', name:'Healthcare', note:'Warm, credible and clear', collection:'Professional', kind:'curated', quality:'high',
-    prompt:`Create a warm credible healthcare professional portrait in a bright, clean, modern clinical environment. Preserve the person's real identity and expression. Only retain medical clothing or professional markers if they are supported by the source; never invent a stethoscope, title, badge, uniform or credential. Keep the setting subtle and non-branded.`,
-  },
-  {
-    id:'speaker-author', name:'Speaker / Author', note:'Editorial portrait with presence', collection:'Professional', provider:'gemini', kind:'curated', quality:'high',
-    prompt:`Create a confident editorial portrait for a speaker, author or expert. Use elegant directional key light with controlled fill, readable eyes, natural catchlights and clean facial exposure that gives presence without beautifying or reshaping the person. Use composed posture and a refined contemporary venue, library or stage-adjacent setting chosen to suit the source. Keep props minimal, do not invent readable book titles or event branding, and preserve the person's natural character.`,
   },
   {
     id:'high-end-cafe', name:'High-End Café', note:'Natural social portrait', collection:'Lifestyle', provider:'openai', kind:'curated', quality:'high', complexity:'medium',
@@ -1572,10 +1567,13 @@ function dailyLookDirectedPrompt(style, variantIndex, blemishLevel = 'soften') {
   const enhancerLook = style.id === 'surprise-enhancer'
     ? dailyLookRotationItem(ENHANCER_LOOKS, variantIndex)
     : null;
+  if (style.collection === 'Family & Friends' || style.collection === 'Mirror Selfies') {
+    return `${SOURCE_PHOTO_ENHANCEMENT_PROMPT}\n\nSelected enhancement: ${style.name}\n${style.prompt}`;
+  }
   return enhancerLook
     ? `${style.prompt}\n\nSelected surprise transformation for this generation:\n${enhancerLookBrief(enhancerLook)}`
     : style.kind === 'curated'
-      ? `${CURATED_PORTRAIT_IDENTITY_PROMPT}${style.provider === 'gemini' ? `\n\n${GEMINI_PORTRAIT_FINISH_PROMPT}` : ''}\n\nCurated preset: ${style.name}\n${style.prompt}${style.collection === 'Professional' ? `\n\n${PROFESSIONAL_PORTRAIT_FINISH_PROMPT}` : ''}${style.collection === 'Lifestyle' ? `\n\n${LIFESTYLE_PORTRAIT_FINISH_PROMPT}` : ''}${style.collection === 'Selfies' ? `\n\n${SELFIE_PORTRAIT_FINISH_PROMPT}` : ''}${dailyLookBlemishPrompt(style, blemishLevel) ? `\n\n${dailyLookBlemishPrompt(style, blemishLevel)}` : ''}`
+      ? `${CURATED_PORTRAIT_IDENTITY_PROMPT}${style.provider === 'gemini' ? `\n\n${GEMINI_PORTRAIT_FINISH_PROMPT}` : ''}\n\nCurated preset: ${style.name}\n${style.prompt}${style.collection === 'Lifestyle' ? `\n\n${LIFESTYLE_PORTRAIT_FINISH_PROMPT}` : ''}${style.collection === 'Selfies' ? `\n\n${SELFIE_PORTRAIT_FINISH_PROMPT}` : ''}${dailyLookBlemishPrompt(style, blemishLevel) ? `\n\n${dailyLookBlemishPrompt(style, blemishLevel)}` : ''}`
       : style.prompt;
 }
 

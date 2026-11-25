@@ -144,10 +144,6 @@ test('curated portrait presets route server-side between OpenAI and Gemini witho
   assert.match(server, /CURATED_PORTRAIT_IDENTITY_PROMPT/);
   assert.match(server, /GEMINI_PORTRAIT_FINISH_PROMPT/);
   assert.match(server, /style\.provider === 'gemini' \? `\\n\\n\$\{GEMINI_PORTRAIT_FINISH_PROMPT\}` : ''/);
-  assert.match(server, /PROFESSIONAL_PORTRAIT_FINISH_PROMPT/);
-  assert.match(server, /style\.collection === 'Professional' \? `\\n\\n\$\{PROFESSIONAL_PORTRAIT_FINISH_PROMPT\}` : ''/);
-  assert.match(server, /Correct the person's facial white balance independently from ambient office or interior colour casts/);
-  assert.match(server, /The face must be at least as clearly exposed as in the source/);
   assert.match(server, /LIFESTYLE_PORTRAIT_FINISH_PROMPT/);
   assert.match(server, /style\.collection === 'Lifestyle' \? `\\n\\n\$\{LIFESTYLE_PORTRAIT_FINISH_PROMPT\}` : ''/);
   assert.match(server, /Correct facial skin independently from warm café lamps, green foliage, sunset warmth or mixed ambient light/);
