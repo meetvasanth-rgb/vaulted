@@ -1,0 +1,146 @@
+{
+  "natural-polish": {
+    "name": "Natural Polish",
+    "collection": "Face Booster",
+    "preview": "/portrait-samples/natural-polish.v1.webp",
+    "thumbnail": "/portrait-samples/natural-polish-thumb.v1.webp"
+  },
+  "selfie-polish": {
+    "name": "Selfie Polish",
+    "collection": "Selfies",
+    "preview": "/portrait-samples/selfie-polish.v1.webp",
+    "thumbnail": "/portrait-samples/selfie-polish-thumb.v1.webp"
+  },
+  "selfie-soft-daylight": {
+    "name": "Soft Daylight",
+    "collection": "Selfies",
+    "preview": "/portrait-samples/selfie-soft-daylight.v1.webp",
+    "thumbnail": "/portrait-samples/selfie-soft-daylight-thumb.v1.webp"
+  },
+  "selfie-indoor-balance": {
+    "name": "Indoor Balance",
+    "collection": "Selfies",
+    "preview": "/portrait-samples/selfie-indoor-balance.v1.webp",
+    "thumbnail": "/portrait-samples/selfie-indoor-balance-thumb.v1.webp"
+  },
+  "selfie-low-light": {
+    "name": "Low-Light Selfie",
+    "collection": "Selfies",
+    "preview": "/portrait-samples/selfie-low-light.v1.webp",
+    "thumbnail": "/portrait-samples/selfie-low-light-thumb.v1.webp"
+  },
+  "selfie-outdoor": {
+    "name": "Outdoor Selfie",
+    "collection": "Selfies",
+    "preview": "/portrait-samples/selfie-outdoor.v1.webp",
+    "thumbnail": "/portrait-samples/selfie-outdoor-thumb.v1.webp"
+  },
+  "family-natural-group": {
+    "name": "Natural Group",
+    "collection": "Family & Friends",
+    "preview": "/portrait-samples/family-natural-group.v1.webp",
+    "thumbnail": "/portrait-samples/family-natural-group-thumb.v1.webp"
+  },
+  "family-indoor-rescue": {
+    "name": "Indoor Rescue",
+    "collection": "Family & Friends",
+    "preview": "/portrait-samples/family-indoor-rescue.v1.webp",
+    "thumbnail": "/portrait-samples/family-indoor-rescue-thumb.v1.webp"
+  },
+  "family-celebration": {
+    "name": "Celebration",
+    "collection": "Family & Friends",
+    "preview": "/portrait-samples/family-celebration.v1.webp",
+    "thumbnail": "/portrait-samples/family-celebration-thumb.v1.webp"
+  },
+  "family-outdoor-balance": {
+    "name": "Outdoor Balance",
+    "collection": "Family & Friends",
+    "preview": "/portrait-samples/family-outdoor-balance.v1.webp",
+    "thumbnail": "/portrait-samples/family-outdoor-balance-thumb.v1.webp"
+  },
+  "mirror-cleanup": {
+    "name": "Mirror Cleanup",
+    "collection": "Mirror Selfies",
+    "preview": "/portrait-samples/mirror-cleanup.v1.webp",
+    "thumbnail": "/portrait-samples/mirror-cleanup-thumb.v1.webp"
+  },
+  "mirror-selfie-enhance": {
+    "name": "Mirror Selfie Enhance",
+    "collection": "Mirror Selfies",
+    "preview": "/portrait-samples/mirror-selfie-enhance.v1.webp",
+    "thumbnail": "/portrait-samples/mirror-selfie-enhance-thumb.v1.webp"
+  },
+  "soft-daylight": {
+    "name": "Soft Daylight",
+    "collection": "Face Booster",
+    "preview": "/portrait-samples/soft-daylight.v1.webp",
+    "thumbnail": "/portrait-samples/soft-daylight-thumb.v1.webp"
+  },
+  "studio-clarity": {
+    "name": "Studio Clarity",
+    "collection": "Face Booster",
+    "preview": "/portrait-samples/studio-clarity.v1.webp",
+    "thumbnail": "/portrait-samples/studio-clarity-thumb.v1.webp"
+  },
+  "low-light-rescue": {
+    "name": "Low-Light Rescue",
+    "collection": "Face Booster",
+    "preview": "/portrait-samples/low-light-rescue.v1.webp",
+    "thumbnail": "/portrait-samples/low-light-rescue-thumb.v1.webp"
+  },
+  "outdoor-balance": {
+    "name": "Outdoor Balance",
+    "collection": "Face Booster",
+    "preview": "/portrait-samples/outdoor-balance.v1.webp",
+    "thumbnail": "/portrait-samples/outdoor-balance-thumb.v1.webp"
+  },
+  "warm-glow": {
+    "name": "Warm Glow",
+    "collection": "Face Booster",
+    "preview": "/portrait-samples/warm-glow.v1.webp",
+    "thumbnail": "/portrait-samples/warm-glow-thumb.v1.webp"
+  },
+  "classic-white-studio": {
+    "name": "Classic White",
+    "collection": "Signature Studio",
+    "preview": "/portrait-samples/classic-white-studio.v1.webp",
+    "thumbnail": "/portrait-samples/classic-white-studio-thumb.v1.webp"
+  },
+  "warm-ivory-studio": {
+    "name": "Warm Ivory",
+    "collection": "Signature Studio",
+    "preview": "/portrait-samples/warm-ivory-studio.v1.webp",
+    "thumbnail": "/portrait-samples/warm-ivory-studio-thumb.v1.webp"
+  },
+  "charcoal-studio": {
+    "name": "Charcoal",
+    "collection": "Signature Studio",
+    "preview": "/portrait-samples/charcoal-studio.v1.webp",
+    "thumbnail": "/portrait-samples/charcoal-studio-thumb.v1.webp"
+  },
+  "window-light-portrait": {
+    "name": "Window Light",
+    "collection": "Signature Studio",
+    "preview": "/portrait-samples/window-light-portrait.v1.webp",
+    "thumbnail": "/portrait-samples/window-light-portrait-thumb.v1.webp"
+  },
+  "luxury-minimal": {
+    "name": "Luxury Minimal",
+    "collection": "Signature Studio",
+    "preview": "/portrait-samples/luxury-minimal.v1.webp",
+    "thumbnail": "/portrait-samples/luxury-minimal-thumb.v1.webp"
+  },
+  "high-end-cafe": {
+    "name": "High-End Café",
+    "collection": "Lifestyle",
+    "preview": "/portrait-samples/high-end-cafe.v1.webp",
+    "thumbnail": "/portrait-samples/high-end-cafe-thumb.v1.webp"
+  },
+  "golden-hour": {
+    "name": "Golden Hour",
+    "collection": "Lifestyle",
+    "preview": "/portrait-samples/golden-hour.v1.webp",
+    "thumbnail": "/portrait-samples/golden-hour-thumb.v1.webp"
+  }
+}

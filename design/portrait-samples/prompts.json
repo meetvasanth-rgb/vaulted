@@ -1,0 +1,151 @@
+{
+  "generator": "Built-in image generation tool",
+  "subjects": "Fictional young adults, approximately 22–28; approved burgundy-blouse replacement in all group samples",
+  "purpose": "Illustrative preset examples, not guaranteed outputs or customer photographs",
+  "presets": [
+    {
+      "id": "natural-polish",
+      "name": "Natural Polish",
+      "collection": "Face Booster",
+      "prompt": "Use case: photorealistic-natural. Asset type: portrait preset sample photograph. One fictional young adult South Asian man aged 25, medium brown skin, short slightly tousled black hair, light natural stubble, brown eyes, plain muted clay-red cotton shirt. Relaxed closed-mouth smile, chest-up casual portrait in a simple living room, broad natural window light. Realistic young-adult fine skin texture with a couple of small natural marks, no skin whitening, no beauty retouch. Natural Polish sample. Looks like a real contemporary camera photograph: ordinary believable people, lifelike fine skin texture, natural eyes and teeth, subtle imperfections and plausible shadows. Avoid glossy CGI, illustration, plastic smoothing, beauty-filter skin, exaggerated symmetry, fake cinematic flare. Vertical 3:4 SINGLE photograph, people centered with breathing room and realistic perspective. No text, borders, collage, logos, watermark."
+    },
+    {
+      "id": "selfie-polish",
+      "name": "Selfie Polish",
+      "collection": "Selfies",
+      "prompt": "Use case: photorealistic-natural. Asset type: portrait preset sample photograph. One fictional young adult woman aged 23 with warm medium brown skin, dark wavy shoulder-length hair, brown eyes, fine natural freckles, muted teal cotton crewneck shirt. Relaxed closed-mouth smile, casual front-phone selfie chest-up with a little natural asymmetry, normal believable young-adult facial proportions. A simple neutral apartment and real houseplant behind her. Balanced soft window light, faithful complexion, clear eyes, gentle fine skin texture. No heavy makeup. Selfie Polish sample. Looks like a real contemporary camera photograph: ordinary believable people, lifelike fine skin texture, natural eyes and teeth, subtle imperfections and plausible shadows. Avoid glossy CGI, illustration, plastic smoothing, beauty-filter skin, exaggerated symmetry, fake cinematic flare. Vertical 3:4 SINGLE photograph, people centered with breathing room and realistic perspective. No text, borders, collage, logos, watermark."
+    },
+    {
+      "id": "selfie-soft-daylight",
+      "name": "Soft Daylight",
+      "collection": "Selfies",
+      "prompt": "Use case: identity-preserve. Edit the referenced young fictional woman's image into ONE sample photograph for selfie-soft-daylight. Same young adult woman, apartment and exact selfie framing. Fresh broad soft neutral window daylight, open facial shadows and natural catchlights. Gentle photographic correction only. Preserve exact identity, youthful adult age 23, face geometry, hair, freckles, medium brown complexion, pose and teal shirt. Realistic ordinary camera photograph, restrained look, authentic fine skin texture; no beauty filter, waxiness, whitening, glamour or CGI. Vertical 3:4, no text, borders, collage, logos or watermark."
+    },
+    {
+      "id": "selfie-indoor-balance",
+      "name": "Indoor Balance",
+      "collection": "Selfies",
+      "prompt": "Use case: identity-preserve. Edit the referenced young fictional woman's image into ONE sample photograph for selfie-indoor-balance. Same young adult woman and selfie framing in the recognizable apartment. Cozy late-afternoon room with a softly lit warm practical lamp behind her; the face has balanced neutral skin colour and believable soft fill, while the room retains warm atmosphere. No orange skin. Preserve exact identity, youthful adult age 23, face geometry, hair, freckles, medium brown complexion, pose and teal shirt. Realistic ordinary camera photograph, restrained look, authentic fine skin texture; no beauty filter, waxiness, whitening, glamour or CGI. Vertical 3:4, no text, borders, collage, logos or watermark."
+    },
+    {
+      "id": "selfie-low-light",
+      "name": "Low-Light Selfie",
+      "collection": "Selfies",
+      "prompt": "Use case: identity-preserve. Edit the referenced young fictional woman's image into ONE sample photograph for selfie-low-light. Same young adult woman and selfie crop in the recognizable apartment at night. Dim background with a warm lamp, face naturally well exposed by plausible nearby soft light, detailed eyes and hair, realistic young skin texture. Preserve nighttime atmosphere; not daytime or flash glare. Preserve exact identity, youthful adult age 23, face geometry, hair, freckles, medium brown complexion, pose and teal shirt. Realistic ordinary camera photograph, restrained look, authentic fine skin texture; no beauty filter, waxiness, whitening, glamour or CGI. Vertical 3:4, no text, borders, collage, logos or watermark."
+    },
+    {
+      "id": "selfie-outdoor",
+      "name": "Outdoor Selfie",
+      "collection": "Selfies",
+      "prompt": "Use case: identity-preserve. Edit the referenced young fictional woman's image into ONE sample photograph for selfie-outdoor. Same young adult woman, expression, teal shirt and selfie framing at a real leafy park walkway outdoors. Neutral daylight, balanced facial exposure against bright soft sky, natural sky detail, no green cast on skin. No sunset or fantasy effects. Preserve exact identity, youthful adult age 23, face geometry, hair, freckles, medium brown complexion, pose and teal shirt. Realistic ordinary camera photograph, restrained look, authentic fine skin texture; no beauty filter, waxiness, whitening, glamour or CGI. Vertical 3:4, no text, borders, collage, logos or watermark."
+    },
+    {
+      "id": "family-natural-group",
+      "name": "Natural Group",
+      "collection": "Family & Friends",
+      "prompt": "Use case: precise-object-edit. Edit target: referenced three-person group photograph. Replace ONLY the entire woman at the LEFT who is wearing the green/sage shirt with a completely DIFFERENT fictional young adult model, age 24. The new woman has a light olive complexion, straight chestnut-brown shoulder-length hair tucked behind one ear, brown eyes, a distinct oval face and normal natural nose proportions, and a plain burgundy cotton blouse instead of green. She must look like a real young adult photographed by a normal camera: relaxed slight closed-mouth smile, believable facial anatomy, clearly formed nostrils and nose bridge, naturally proportioned eyes and mouth, fine skin texture without waxiness. Her head, neck and shoulders align naturally with her own torso. Keep the central young Black man in the cream T-shirt and the right-hand young East Asian woman in the muted blue shirt EXACTLY as they are, with the same faces, expressions, clothes, proportions, positions and real lighting. Keep the room, framing and natural group-photo atmosphere. Do not blend or copy faces. Do not beautify or change the other two people. Return one realistic group photograph, no text, borders, collage, logos or watermark."
+    },
+    {
+      "id": "family-indoor-rescue",
+      "name": "Indoor Rescue",
+      "collection": "Family & Friends",
+      "prompt": "Use case: identity-preserve. Edit the user-approved referenced group photograph into ONE sample for family-indoor-rescue. Same three young adults in the same positions, exact faces, anatomy, expressions and clothes, including LEFT woman in BURGUNDY blouse with straight chestnut hair. Same room in gently dimmer evening ambience with a small warm practical lamp in the background. Correct the face exposure independently for all three, neutralise mixed-light casts, retain believable warm room atmosphere. Natural young skin texture, clear eyes, no facial reconstruction. The LEFT woman's new face is approved and must NOT be replaced by the previous green-shirt model. Preserve noses, eyes, mouths, facial proportions and ages 23–27 of ALL THREE independently. Natural closed-mouth smiles, fine skin texture, no cloned faces, no waxy skin, no odd anatomy or fused bodies. Keep hands naturally cropped or out of frame and avoid adding gestures. Real ordinary camera photography, vertical 3:4 frame, no text, borders, collage, logos or watermark."
+    },
+    {
+      "id": "family-celebration",
+      "name": "Celebration",
+      "collection": "Family & Friends",
+      "prompt": "Use case: identity-preserve. Edit the user-approved referenced group photograph into ONE sample for family-celebration. Same three young adults, positions, EXACT faces and anatomy, expressions and clothes, including LEFT woman in BURGUNDY blouse with straight chestnut hair. Same room with a few restrained warm decorative string lights behind them for a casual friends celebration. All faces naturally exposed with balanced colour despite the warm decorative lights. Photographic festive ambience, no exaggerated staged party or costume changes. The LEFT woman's new face is approved and must NOT be replaced by the previous green-shirt model. Preserve noses, eyes, mouths, facial proportions and ages 23–27 of ALL THREE independently. Natural closed-mouth smiles, fine skin texture, no cloned faces, no waxy skin, no odd anatomy or fused bodies. Keep hands naturally cropped or out of frame and avoid adding gestures. Real ordinary camera photography, vertical 3:4 frame, no text, borders, collage, logos or watermark."
+    },
+    {
+      "id": "family-outdoor-balance",
+      "name": "Outdoor Balance",
+      "collection": "Family & Friends",
+      "prompt": "Use case: identity-preserve. Edit the user-approved referenced group photograph into ONE sample for family-outdoor-balance. Same three young adults standing or sitting naturally side by side with exact face identities, expressions and upper-body proportions, wearing the SAME clothes, including LEFT woman in BURGUNDY blouse with straight chestnut hair. Outdoors in a believable quiet leafy courtyard in normal neutral daylight. Balanced facial exposure across sun and shade, clear natural eyes, retain differences in skin depth. No dramatic sunset, artificial bokeh or perfect staged symmetry. The LEFT woman's new face is approved and must NOT be replaced by the previous green-shirt model. Preserve noses, eyes, mouths, facial proportions and ages 23–27 of ALL THREE independently. Natural closed-mouth smiles, fine skin texture, no cloned faces, no waxy skin, no odd anatomy or fused bodies. Keep hands naturally cropped or out of frame and avoid adding gestures. Real ordinary camera photography, vertical 3:4 frame, no text, borders, collage, logos or watermark."
+    },
+    {
+      "id": "mirror-cleanup",
+      "name": "Mirror Cleanup",
+      "collection": "Mirror Selfies",
+      "prompt": "Use case: identity-preserve. Edit target is the referenced image; produce ONE realistic sample photograph for preset mirror-cleanup. Same young woman and exact mirror selfie. Keep her face, youthful age, phone, every finger, phone grip, sweater, jeans, mirror edge, reflection geometry, pose, crop and furniture unchanged. Clean only faint isolated surface smudges on the empty mirror area, with subtle balanced face illumination. No phone or object removal, hidden face reconstruction or fake reflections. The result should be almost identical to the reference, clean and naturally photographed. Preserve the referenced person's exact identity and young-adult appearance, face geometry, real skin texture and natural complexion. No glamour beautification, waxy smoothing, CGI, illustration, whitening or changed facial features. Vertical 3:4, photographic believable composition, no text, borders, collage, logo or watermark."
+    },
+    {
+      "id": "mirror-selfie-enhance",
+      "name": "Mirror Selfie Enhance",
+      "collection": "Mirror Selfies",
+      "prompt": "Use case: photorealistic-natural. Asset type: sample photograph for a portrait app preset. A fictional East Asian adult woman around 28 with shoulder-length straight dark hair, warm light-medium skin, small natural freckles, wearing a relaxed slate-blue knit sweater and dark jeans. She is taking a waist-up mirror selfie in a simple bright bedroom using a plain dark smartphone held beside the lower cheek without hiding her eyes. Correct reflection, phone visible, natural anatomically correct fingers, mirror edge visible, face sharp and naturally lit, balanced exposure and white balance, restrained room detail, no brands. This is a Mirror Selfie Enhance sample. Premium but believable real photography, authentic face, no exaggerated beauty. Vertical 3:4 single photograph, person or people centered, enough headroom for thumbnail crop. No text, logos, frames, borders, collage, watermark."
+    },
+    {
+      "id": "soft-daylight",
+      "name": "Soft Daylight",
+      "collection": "Face Booster",
+      "prompt": "Use case: identity-preserve. Edit target is the referenced image; produce ONE realistic sample photograph for preset soft-daylight. Same man, casual shirt and living room, soft broad neutral daylight and gentle facial fill, clean realistic skin colour and open shadows. Preserve the referenced person's exact identity and young-adult appearance, face geometry, real skin texture and natural complexion. No glamour beautification, waxy smoothing, CGI, illustration, whitening or changed facial features. Vertical 3:4, photographic believable composition, no text, borders, collage, logo or watermark."
+    },
+    {
+      "id": "studio-clarity",
+      "name": "Studio Clarity",
+      "collection": "Face Booster",
+      "prompt": "Use case: identity-preserve. Edit target is the referenced image; produce ONE realistic sample photograph for preset studio-clarity. Same man, shirt, living room and crop, refined clarity and controlled contrast, clean balanced facial light, subtle sharp eye and hair detail, real skin texture. No background replacement or overly sharp HDR. Preserve the referenced person's exact identity and young-adult appearance, face geometry, real skin texture and natural complexion. No glamour beautification, waxy smoothing, CGI, illustration, whitening or changed facial features. Vertical 3:4, photographic believable composition, no text, borders, collage, logo or watermark."
+    },
+    {
+      "id": "low-light-rescue",
+      "name": "Low-Light Rescue",
+      "collection": "Face Booster",
+      "prompt": "Use case: identity-preserve. Edit target is the referenced image; produce ONE realistic sample photograph for preset low-light-rescue. Same man, shirt and living room in low evening light with a dim practical lamp. Face is naturally readable with believable soft fill and restrained noise, background retains a dim evening mood. Not daylight. Preserve the referenced person's exact identity and young-adult appearance, face geometry, real skin texture and natural complexion. No glamour beautification, waxy smoothing, CGI, illustration, whitening or changed facial features. Vertical 3:4, photographic believable composition, no text, borders, collage, logo or watermark."
+    },
+    {
+      "id": "outdoor-balance",
+      "name": "Outdoor Balance",
+      "collection": "Face Booster",
+      "prompt": "Use case: identity-preserve. Edit target is the referenced image; produce ONE realistic sample photograph for preset outdoor-balance. Same man, shirt and chest-up crop on a real park path in neutral daylight. Naturally balance sun and shade on his face, retain soft bright sky detail and realistic foliage, no skin lightening or exaggerated bokeh. Preserve the referenced person's exact identity and young-adult appearance, face geometry, real skin texture and natural complexion. No glamour beautification, waxy smoothing, CGI, illustration, whitening or changed facial features. Vertical 3:4, photographic believable composition, no text, borders, collage, logo or watermark."
+    },
+    {
+      "id": "warm-glow",
+      "name": "Warm Glow",
+      "collection": "Face Booster",
+      "prompt": "Use case: identity-preserve. Edit target is the referenced image; produce ONE realistic sample photograph for preset warm-glow. Same man, shirt, original living-room setting and crop, gentle warm-neutral light, controlled warm highlights and natural neutral skin midtones, no orange skin or heavy golden filter. Preserve the referenced person's exact identity and young-adult appearance, face geometry, real skin texture and natural complexion. No glamour beautification, waxy smoothing, CGI, illustration, whitening or changed facial features. Vertical 3:4, photographic believable composition, no text, borders, collage, logo or watermark."
+    },
+    {
+      "id": "classic-white-studio",
+      "name": "Classic White",
+      "collection": "Signature Studio",
+      "prompt": "Use case: photorealistic-natural. Asset type: portrait preset sample photograph. One fictional young adult Black woman aged 24, deep brown skin, natural coiled hair tied in a loose puff, dark eyes, plain olive-green blouse, small simple stud earrings. Chest-up photographic portrait on a clean soft-white seamless background. Broad soft studio key and neutral fill, realistic complexion with fine skin texture, slight natural facial asymmetry, composed relaxed expression, age-appropriate young-adult features, no skin lightening, no waxy finish. Classic White studio sample. Looks like a real contemporary camera photograph: ordinary believable people, lifelike fine skin texture, natural eyes and teeth, subtle imperfections and plausible shadows. Avoid glossy CGI, illustration, plastic smoothing, beauty-filter skin, exaggerated symmetry, fake cinematic flare. Vertical 3:4 SINGLE photograph, people centered with breathing room and realistic perspective. No text, borders, collage, logos, watermark."
+    },
+    {
+      "id": "warm-ivory-studio",
+      "name": "Warm Ivory",
+      "collection": "Signature Studio",
+      "prompt": "Use case: identity-preserve. Edit target: referenced fictional young adult portrait. Create ONE sample for warm-ivory-studio. Same young Black woman, exact face, natural complexion, hair, expression and olive blouse. Warm ivory seamless studio background, broad warm-neutral key and enough neutral fill to keep both eyes clear, dimensional face, no skin lightening or yellow cast. Natural photographic realism is essential: preserve fine skin texture, realistic eyes and age, slight facial asymmetry. Do not beautify, alter facial features, whiten, smooth to plastic, make CGI or change ethnicity. Vertical 3:4, centered person with headroom, single photograph, no text, border, collage, logo or watermark."
+    },
+    {
+      "id": "charcoal-studio",
+      "name": "Charcoal",
+      "collection": "Signature Studio",
+      "prompt": "Use case: identity-preserve. Edit target: referenced fictional young adult portrait. Create ONE sample for charcoal-studio. Same young Black woman, exact face, complexion, hair, expression and olive blouse. Deep charcoal seamless studio background, broad soft sculpting key, gentle shadow-side fill and restrained separation light. Face clearly exposed, authentic pores, no crushed black shadows or grey complexion. Natural photographic realism is essential: preserve fine skin texture, realistic eyes and age, slight facial asymmetry. Do not beautify, alter facial features, whiten, smooth to plastic, make CGI or change ethnicity. Vertical 3:4, centered person with headroom, single photograph, no text, border, collage, logo or watermark."
+    },
+    {
+      "id": "window-light-portrait",
+      "name": "Window Light",
+      "collection": "Signature Studio",
+      "prompt": "Use case: identity-preserve. Edit target: referenced fictional young adult portrait. Create ONE sample for window-light-portrait. Same young Black woman, exact face, complexion, hair, expression and olive blouse. Calm simple neutral interior with unseen large window to one side, broad soft daylight and gentle neutral bounce fill, both eyes clearly visible, editorial yet candid, authentic skin texture, no theatrical rays. Natural photographic realism is essential: preserve fine skin texture, realistic eyes and age, slight facial asymmetry. Do not beautify, alter facial features, whiten, smooth to plastic, make CGI or change ethnicity. Vertical 3:4, centered person with headroom, single photograph, no text, border, collage, logo or watermark."
+    },
+    {
+      "id": "luxury-minimal",
+      "name": "Luxury Minimal",
+      "collection": "Signature Studio",
+      "prompt": "Use case: identity-preserve. Edit target: referenced fictional young adult portrait. Create ONE sample for luxury-minimal. Same young Black woman, exact face, complexion, hair, expression and olive blouse. Contemporary minimalist warm-neutral architectural interior, simple pale plaster wall and a subtle stone detail, precise soft editorial light, believable scale and understated styling, no brands or luxury props. Natural photographic realism is essential: preserve fine skin texture, realistic eyes and age, slight facial asymmetry. Do not beautify, alter facial features, whiten, smooth to plastic, make CGI or change ethnicity. Vertical 3:4, centered person with headroom, single photograph, no text, border, collage, logo or watermark."
+    },
+    {
+      "id": "high-end-cafe",
+      "name": "High-End Café",
+      "collection": "Lifestyle",
+      "prompt": "Use case: identity-preserve. Edit target: referenced fictional young adult portrait. Create ONE sample for high-end-cafe. Same young South Asian man age 25, exact face, hair, light stubble, natural medium brown complexion and clay-red shirt, in a realistically scaled contemporary café at 5–6 PM. Seated environmental chest-up portrait, broad directional window light mixed with gentle warm practical lamp fill, subtle occupied background and warm bokeh without exaggerated blur. Natural skin colour and readable eyes, 5000–5200K warm-neutral photographic balance. No oversized pasted-in head or body. Plausible eye-level 50mm camera perspective. Natural photographic realism is essential: preserve fine skin texture, realistic eyes and age, slight facial asymmetry. Do not beautify, alter facial features, whiten, smooth to plastic, make CGI or change ethnicity. Vertical 3:4, centered person with headroom, single photograph, no text, border, collage, logo or watermark."
+    },
+    {
+      "id": "golden-hour",
+      "name": "Golden Hour",
+      "collection": "Lifestyle",
+      "prompt": "Use case: identity-preserve. Edit target: referenced fictional young adult portrait. Create ONE sample for golden-hour. Keep this young South Asian man age 25 and his exact face, shirt, pose, original living room and framing. Change ONLY photographic light and colour to subtle late-afternoon golden window light, with neutral sky-like fill on the face. Soft warm highlights on wall and shirt, natural neutral medium brown skin, identical geometry and texture. No generated facial detail, background replacement, added sun flares or deep orange skin. Natural photographic realism is essential: preserve fine skin texture, realistic eyes and age, slight facial asymmetry. Do not beautify, alter facial features, whiten, smooth to plastic, make CGI or change ethnicity. Vertical 3:4, centered person with headroom, single photograph, no text, border, collage, logo or watermark."
+    }
+  ]
+}

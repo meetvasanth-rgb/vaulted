@@ -3280,7 +3280,7 @@ function serveStatic(req, res) {
       sendHtmlShell(req, res, data);
       return;
     }
-    const t={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.ico':'image/x-icon','.json':'application/json','.webmanifest':'application/manifest+json','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.svg':'image/svg+xml','.mp4':'video/mp4'};
+    const t={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.ico':'image/x-icon','.json':'application/json','.webmanifest':'application/manifest+json','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.svg':'image/svg+xml','.webp':'image/webp','.mp4':'video/mp4'};
     // Explicit Content-Length (rather than letting Node fall back to
     // chunked transfer-encoding on HTTP/1.1) matters specifically for
     // og:image — link-preview crawlers (WhatsApp's included) are known to
@@ -3290,6 +3290,7 @@ function serveStatic(req, res) {
       ? 'application/json'
       : (t[path.extname(url)] || 'text/plain');
     const staticHeaders = {'Content-Type':contentType,'Content-Length':Buffer.byteLength(data)};
+    if (/^\/portrait-samples\/[a-z0-9-]+\.v1\.webp$/.test(url)) staticHeaders['Cache-Control'] = 'public, max-age=31536000, immutable';
     if (url === '/.well-known/apple-app-site-association') {
       // Apple normally fetches this through its own CDN. Do not encourage an
       // additional stale origin copy after paths (such as Private Numbers)

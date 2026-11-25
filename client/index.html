@@ -3110,6 +3110,10 @@ html.vaultlix-native-android .emergency-sheet{
 .profile-photo-editor{display:grid;grid-template-columns:72px minmax(0,1fr);align-items:center;gap:14px;margin:0 0 16px;padding:14px;border:1px solid #E5D8DD;border-radius:17px;background:#FCF9FA}.profile-photo-preview{width:72px;height:72px;border-radius:24px;display:grid;place-items:center;overflow:hidden;background:linear-gradient(145deg,#F1E4E9,#FAF5F7);color:#682C43;font:800 25px/1 'Manrope',sans-serif;box-shadow:inset 0 0 0 1px rgba(104,44,67,.08)}.profile-photo-preview img{width:100%;height:100%;display:block;object-fit:cover}.profile-photo-copy{min-width:0}.profile-photo-title{font:750 14px/1.25 'Manrope',sans-serif;color:#2A2025}.profile-photo-note{margin-top:4px;font:500 11px/1.45 'Manrope',sans-serif;color:#83757C}.profile-photo-actions{grid-column:1/-1;display:grid;grid-template-columns:1fr;gap:8px}.profile-photo-action{min-height:40px;border:1px solid #D7C6CD;border-radius:11px;background:#fff;color:#682C43;padding:9px 13px;font:700 12px/1.2 'Manrope',sans-serif}.profile-photo-action.remove{color:#A33B50}.profile-photo-action[hidden]{display:none}.profile-photo-menu{position:relative;width:100%}.profile-photo-menu>summary{list-style:none;display:flex;align-items:center;justify-content:center;gap:6px;min-height:40px;border:1px solid #D7C6CD;border-radius:11px;background:#fff;color:#682C43;padding:9px 13px;cursor:pointer;font:700 12px/1.2 'Manrope',sans-serif}.profile-photo-menu>summary::-webkit-details-marker{display:none}.profile-photo-menu>summary::after{content:'›';font-size:18px;line-height:10px;transform:rotate(90deg);transition:transform .16s ease}.profile-photo-menu[open]>summary::after{transform:rotate(-90deg)}.profile-photo-submenu{position:absolute;z-index:12;right:0;top:calc(100% + 7px);width:min(230px,calc(100vw - 72px));padding:7px;border:1px solid #E5D8DD;border-radius:14px;background:#fff;box-shadow:0 16px 38px rgba(52,31,39,.18)}.profile-photo-submenu-label{padding:7px 10px 5px;color:#98878E;font:800 9px/1.2 'Manrope',sans-serif;letter-spacing:.08em;text-transform:uppercase}.profile-photo-submenu .profile-photo-action{display:block;width:100%;min-height:40px;border:0;border-radius:9px;padding:9px 10px;text-align:left;background:transparent;font-size:12px}.profile-photo-submenu .profile-photo-action:active{background:#F7EFF2}.profile-photo-submenu .profile-photo-action.remove{border-top:1px solid #F0E5E9;border-radius:0 0 9px 9px}.profile-photo-submenu .profile-photo-action[hidden]{display:none}.profile-image-avatar{width:100%;height:100%;display:block;object-fit:cover;border-radius:inherit}.public-profile-photo{width:80px;height:80px;margin:0 0 16px;border-radius:26px;display:none;object-fit:cover;box-shadow:0 12px 28px rgba(73,31,48,.18)}
 .profile-pixel-card{z-index:2;text-align:center}.profile-pixel-stage{position:relative;width:min(68vw,270px);aspect-ratio:1;margin:22px auto 18px;overflow:hidden;border-radius:50%;background:linear-gradient(145deg,#F2E5EA,#FBF7F8);box-shadow:0 22px 55px rgba(71,29,46,.24),inset 0 0 0 1px rgba(104,44,67,.1);isolation:isolate}.profile-pixel-stage:after{content:'';position:absolute;inset:0;z-index:4;border-radius:inherit;box-shadow:inset 0 0 0 4px rgba(255,255,255,.72);pointer-events:none}.profile-pixel-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .2s ease}.profile-pixel-grid{position:fixed;inset:0;z-index:3;overflow:visible;pointer-events:none}.profile-pixel-tile{position:absolute;left:0;top:0;background-image:var(--pixel-image);background-repeat:no-repeat;opacity:.03;filter:blur(1.2px);transform:translate3d(var(--pixel-start-x),var(--pixel-start-y),0) scale(.28) rotate(var(--pixel-r));transition-property:transform,opacity,filter;transition-timing-function:cubic-bezier(.18,.76,.18,1),ease,ease;will-change:transform,opacity}#profile-pixel-preview-overlay.assembling .profile-pixel-tile{opacity:1;filter:none;transform:translate3d(var(--pixel-end-x),var(--pixel-end-y),0) scale(1) rotate(0)}#profile-pixel-preview-overlay.settled .profile-pixel-image{opacity:1}#profile-pixel-preview-overlay.settled .profile-pixel-grid{opacity:0;transition:opacity .2s ease}.profile-pixel-note{max-width:300px;margin:0 auto 18px;color:#76666E;font:500 12px/1.55 'Manrope',sans-serif}.profile-pixel-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}.profile-pixel-download{grid-column:1/-1;margin-top:0}.profile-pixel-export-status{min-height:16px;margin:9px 0 0;color:#76666E;font:600 11px/1.4 'Manrope',sans-serif}@media(prefers-reduced-motion:reduce){.profile-pixel-tile,.profile-pixel-image,.profile-pixel-grid{transition:none!important}}
 .daily-look-trigger{background:linear-gradient(135deg,#762A48,#4B172C)!important;border-color:#682C43!important;color:#fff!important}.daily-look-card{background:linear-gradient(180deg,#FFF,#FBF4F7)}.daily-look-preview{position:relative;width:min(100%,360px);aspect-ratio:var(--daily-look-aspect,1);display:grid;place-items:center;overflow:hidden;margin:0 auto 15px;border:1px dashed #D7BEC8;border-radius:22px;background:#F5ECEF;color:#816D76;text-align:center}.daily-look-preview img{width:100%;height:100%;object-fit:contain}.daily-look-preview.zoomable{touch-action:none;cursor:zoom-in;-webkit-user-select:none;user-select:none}.daily-look-preview.zoomable img{transform:translate3d(var(--daily-look-pan-x,0px),var(--daily-look-pan-y,0px),0) scale(var(--daily-look-scale,1));transform-origin:center;transition:transform .16s ease;will-change:transform}.daily-look-preview.zoomable.is-gesturing img{transition:none}.daily-look-preview.zoomable.is-zoomed{cursor:grab}.daily-look-preview.zoomable.is-dragging{cursor:grabbing}.daily-look-zoom-hint{position:absolute;left:50%;bottom:12px;z-index:2;transform:translateX(-50%);padding:6px 10px;border-radius:999px;background:rgba(31,20,26,.72);color:#fff;font:650 10px/1 'Manrope',sans-serif;white-space:nowrap;pointer-events:none;transition:opacity .18s ease}.daily-look-preview.is-zoomed .daily-look-zoom-hint{opacity:0}.daily-look-preview-copy{max-width:250px;padding:24px;font:650 13px/1.5 'Manrope',sans-serif}.daily-look-styles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 14px}.daily-look-style{position:relative;min-height:80px;padding:12px 9px;border:1px solid #DDCFD5;border-radius:15px;background:#fff;color:#34262D;text-align:left}.daily-look-style.selected{border:2px solid #6B1F3A;background:#F8EEF2;padding:11px 8px}.daily-look-style strong{display:block;font:720 12px/1.25 'Manrope',sans-serif}.daily-look-style span{display:block;margin-top:5px;font:500 9px/1.35 'Manrope',sans-serif;color:#84727A}.daily-look-style em{position:absolute;right:7px;top:6px;padding:3px 5px;border-radius:10px;background:#6B1F3A;color:#fff;font:700 7px/1 'Manrope',sans-serif;letter-spacing:.05em;text-transform:uppercase}.daily-look-consent{display:flex;gap:9px;align-items:flex-start;margin:13px 0;color:#6F6067;font:500 11px/1.45 'Manrope',sans-serif}.daily-look-consent input{margin-top:2px;accent-color:#6B1F3A}.daily-look-status{min-height:18px;margin:8px 0;color:#7A6870;font:600 11px/1.4 'Manrope',sans-serif}.daily-look-result-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}.daily-look-result-actions[hidden]{display:none}
+
+/* Local preset samples are independent of the private photo picker. */
+.daily-look-style-card{position:relative;flex:0 0 146px;display:flex;scroll-snap-align:center}.daily-look-style-card>.daily-look-style{width:100%;flex:1 1 auto;min-height:228px}.daily-look-style.has-sample .daily-look-style-art{height:126px;overflow:hidden;background:#F2ECEF}.daily-look-style-art img{display:block;width:100%;height:100%;object-fit:cover;object-position:center 36%}.daily-look-sample-open{position:absolute;top:9px;right:9px;display:grid;place-items:center;width:38px;height:38px;padding:9px;border:1px solid #E4D5DD;border-radius:50%;background:#FFFFFFEB;color:#6B1F3A;box-shadow:0 2px 8px #31102315}.daily-look-sample-open svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}.daily-look-sample-open:focus-visible{outline:2px solid #6B1F3A;outline-offset:2px}.daily-look-sample-overlay{position:fixed;inset:0;z-index:13070;display:flex;align-items:center;justify-content:center;padding:calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));background:#24121B99}.daily-look-sample-card{width:min(100%,440px);max-height:100%;overflow-y:auto;padding:18px;border-radius:24px;background:#fff;color:#33262E;box-shadow:0 24px 80px #1A0A1840}.daily-look-sample-card h2{margin:0;font:750 19px/1.3 'Manrope',sans-serif}.daily-look-sample-card .account-head{margin-bottom:12px}.daily-look-sample-image{display:block;width:100%;max-height:57svh;object-fit:contain;border-radius:15px;background:#F5F0F2}.daily-look-sample-image[hidden]{display:none}.daily-look-sample-description{margin:12px 0 5px;font:600 12px/1.5 'Manrope',sans-serif}.daily-look-sample-note{margin:0 0 14px;color:#8B7780;font:500 10px/1.5 'Manrope',sans-serif}.daily-look-sample-card .account-primary{width:100%}
+
 /* Swipeable portrait shelves keep the photograph in view while browsing. */
 .daily-look-card{background:#fff!important}.daily-look-card .daily-look-preview{max-height:42svh;max-width:100%;width:min(100%,360px)}
 .daily-look-collections{display:flex;gap:18px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:none;margin:0 0 14px;padding:3px 2px 9px;border-bottom:1px solid #EFE7EA;-webkit-overflow-scrolling:touch}.daily-look-collections::-webkit-scrollbar,.daily-look-styles::-webkit-scrollbar{display:none}
@@ -14447,12 +14451,94 @@ function applyDailyLookMode(avatarMode) {
 
 function closeDailyLook() {
   resetDailyLookPreviewZoom();
+  closeDailyLookSample();
   stopDailyLookCreationAnimation();
   document.getElementById('daily-look-overlay')?.classList.remove('open');
   dailyLookSourceImage = null;
   dailyLookSourceDimensions = null;
   if (dailyLookDestination === 'status') document.getElementById('status-composer')?.style.removeProperty('display');
   dailyLookDestination = null;
+}
+
+// Only shipped illustrative assets are accepted; selecting a sample never
+// replaces the user's source photo or starts a generation request.
+const DAILY_LOOK_SAMPLE_IDS = new Set(["natural-polish", "selfie-polish", "selfie-soft-daylight", "selfie-indoor-balance", "selfie-low-light", "selfie-outdoor", "family-natural-group", "family-indoor-rescue", "family-celebration", "family-outdoor-balance", "mirror-cleanup", "mirror-selfie-enhance", "soft-daylight", "studio-clarity", "low-light-rescue", "outdoor-balance", "warm-glow", "classic-white-studio", "warm-ivory-studio", "charcoal-studio", "window-light-portrait", "luxury-minimal", "high-end-cafe", "golden-hour"]);
+function dailyLookSampleAsset(style, thumbnail = false) {
+  if (!DAILY_LOOK_SAMPLE_IDS.has(style?.id)) return null;
+  return `/portrait-samples/${style.id}${thumbnail ? '-thumb' : ''}.v1.webp`;
+}
+
+let dailyLookSampleCleanup = null;
+function closeDailyLookSample() {
+  dailyLookSampleCleanup?.();
+  dailyLookSampleCleanup = null;
+}
+
+function openDailyLookSample(style, onSelect) {
+  const source = dailyLookSampleAsset(style);
+  if (!source) return;
+  closeDailyLookSample();
+  const previousFocus = document.activeElement;
+  const studioCard = document.querySelector('#daily-look-overlay .daily-look-card');
+  const overlay = document.createElement('div');
+  overlay.id = 'daily-look-sample-overlay';
+  overlay.className = 'daily-look-sample-overlay';
+  const dialog = document.createElement('div');
+  dialog.className = 'daily-look-sample-card';
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-labelledby', 'daily-look-sample-title');
+  const header = document.createElement('div');
+  header.className = 'account-head';
+  const title = document.createElement('h2');
+  title.id = 'daily-look-sample-title';
+  title.textContent = style.name;
+  const close = document.createElement('button');
+  close.type = 'button'; close.className = 'account-close';
+  close.textContent = '×'; close.setAttribute('aria-label', 'Close sample preview');
+  close.onclick = closeDailyLookSample;
+  header.append(title, close);
+  const image = document.createElement('img');
+  image.className = 'daily-look-sample-image';
+  image.src = source; image.alt = `${style.name} sample photograph`;
+  image.decoding = 'async';
+  const note = document.createElement('p');
+  note.className = 'daily-look-sample-note';
+  note.textContent = 'Illustrative sample · Results vary with your photo.';
+  const description = document.createElement('p');
+  description.className = 'daily-look-sample-description';
+  description.textContent = style.note || '';
+  const use = document.createElement('button');
+  use.type = 'button'; use.className = 'account-primary';
+  use.textContent = 'Use this preset';
+  use.disabled = style.available === false;
+  use.onclick = () => {
+    closeDailyLookSample();
+    onSelect?.();
+    document.querySelector('#daily-look-styles .selected')?.focus({ preventScroll:true });
+  };
+  image.onerror = () => { image.hidden = true; note.textContent = 'Sample unavailable. You can still select this preset.'; };
+  dialog.append(header, image, description, note, use);
+  overlay.append(dialog);
+  overlay.onclick = event => { if (event.target === overlay) closeDailyLookSample(); };
+  const keyHandler = event => {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeDailyLookSample(); }
+    if (event.key === 'Tab') {
+      const last = use.disabled ? close : use;
+      if (event.shiftKey && document.activeElement === close) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); close.focus(); }
+    }
+  };
+  overlay.addEventListener('keydown', keyHandler);
+  document.body.append(overlay);
+  if (studioCard) studioCard.inert = true;
+  dailyLookSampleCleanup = () => {
+    overlay.removeEventListener('keydown', keyHandler);
+    overlay.remove();
+    if (studioCard) studioCard.inert = false;
+    if (previousFocus?.isConnected) previousFocus.focus({ preventScroll:true });
+  };
+  close.focus({ preventScroll:true });
 }
 
 function renderDailyLookStyles(styles = []) {
@@ -14539,11 +14625,35 @@ function renderDailyLookStyles(styles = []) {
     const art = document.createElement('div');
     art.className = 'daily-look-style-art';
     art.setAttribute('aria-hidden', 'true');
-    art.innerHTML = collectionIcons[style.collection] || collectionIcons['Surprise Me'];
+    const thumbnail = dailyLookSampleAsset(style, true);
+    const wrapper = document.createElement('div');
+    wrapper.className = 'daily-look-style-card';
+    let previewButton = null;
+    const select = () => { dailyLookStyleId = style.id; renderDailyLookStyles(styles); };
+    if (thumbnail) {
+      button.classList.add('has-sample');
+      const sample = document.createElement('img');
+      sample.src = thumbnail; sample.alt = ''; sample.loading = 'lazy'; sample.decoding = 'async';
+      sample.width = 320; sample.height = 426;
+      sample.onerror = () => {
+        button.classList.remove('has-sample');
+        art.innerHTML = collectionIcons[style.collection] || collectionIcons['Surprise Me'];
+        previewButton?.remove();
+      };
+      art.append(sample);
+      previewButton = document.createElement('button');
+      previewButton.type = 'button'; previewButton.className = 'daily-look-sample-open';
+      previewButton.setAttribute('aria-label', `Preview ${style.name} sample`);
+      previewButton.title = `Preview ${style.name}`;
+      previewButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5M7 10h6M10 7v6"/></svg>';
+      previewButton.onclick = () => openDailyLookSample(style, select);
+    } else art.innerHTML = collectionIcons[style.collection] || collectionIcons['Surprise Me'];
     button.append(art, title, note);
     if (style.featured) { const badge = document.createElement('em'); badge.textContent = 'Featured'; button.appendChild(badge); }
-    button.onclick = () => { dailyLookStyleId = style.id; renderDailyLookStyles(styles); };
-    return button;
+    button.onclick = select;
+    wrapper.append(button);
+    if (previewButton) wrapper.append(previewButton);
+    return wrapper;
   });
   gallery.style.setProperty('--vx-delay', `${styleButtons.length * 32}ms`);
   if (dailyLookCollectionId === 'Face Booster') styleButtons.push(gallery);
@@ -14571,6 +14681,7 @@ function createDailyLookSourceTools() {
 
 function resetDailyLookView() {
   resetDailyLookPreviewZoom();
+  closeDailyLookSample();
   dailyLookSourceImage = null;
   dailyLookSourceDimensions = null;
   dailyLookGeneratedImage = null;
