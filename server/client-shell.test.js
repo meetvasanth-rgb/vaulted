@@ -69,7 +69,8 @@ test('the interface motion layer animates screens, sheets and portrait choices a
   assert.match(source, /panel\.classList\.add\('ui-category-enter'\)/);
   assert.match(source, /button\.style\.setProperty\('--vx-delay'/);
   assert.match(source, /\.daily-look-collections\{display:grid;grid-template-columns:repeat\(3/);
-  assert.match(source, /'Professional':'<svg/);
+  assert.match(source, /'Family & Friends':'<svg/);
+  assert.match(source, /'Mirror Selfies':'<svg/);
   assert.match(source, /'Lifestyle':'<svg/);
   assert.match(source, /@keyframes vx-collection-enter/);
   assert.match(source, /@keyframes daily-look-silk-flow/);
@@ -137,7 +138,7 @@ test('direct media picker keeps mixed photos and videos in one album', () => {
   assert.match(source, /if \(media\.length > 1\) \{\s*await sendGroupedMediaItems\(room, media, pendingAlbum\)/);
   assert.doesNotMatch(source, /MAX_MEDIA_ALBUM_SOURCE_BYTES/);
   assert.match(source, /function beginPendingMediaAlbum\(room, files\)/);
-  assert.match(source, /selectedMediaFiles\.length > 1 \? beginPendingMediaAlbum/);
+  assert.match(source, /selectedMediaFiles\.length > 1 \|\| selectedMediaFiles\.some\(file => file\.type\.startsWith\('video\/'\)\)[\s\S]{0,50}\? beginPendingMediaAlbum/);
   assert.match(source, /function mediaAlbumRecord\(records, albumGroupId\)/);
   assert.match(source, /class="msg-album-progress" role="status" aria-label="Sending album"/);
   assert.match(source, /function openAlbumMediaAt\(room, rec, itemId\)/);
