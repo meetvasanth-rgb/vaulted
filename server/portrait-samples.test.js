@@ -24,6 +24,7 @@ test('every visible preset has its own real, compact sample and thumbnail',async
     const file=path.join(root,'client',url); const bytes=fs.statSync(file).size;total+=bytes;
     const meta=await sharp(file).metadata();
     assert.equal(meta.format,'webp');
+    if(style.collection==='Mirror Selfies') assert.ok(meta.width/meta.height>1.4 && meta.width/meta.height<1.6,'mirror comparisons keep both portrait panels visible');
     assert.ok(meta.width<=(thumbnail?320:768));assert.ok(meta.height<=(thumbnail?426:1024));
     assert.ok(bytes<(thumbnail?65000:250000),`${style.id} remains light to load`);
     assert.equal(meta.exif,undefined);

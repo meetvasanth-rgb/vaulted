@@ -3114,6 +3114,7 @@ html.vaultlix-native-android .emergency-sheet{
 /* Local preset samples are independent of the private photo picker. */
 .daily-look-style-card{position:relative;flex:0 0 146px;display:flex;scroll-snap-align:center}.daily-look-style-card>.daily-look-style{width:100%;flex:1 1 auto;min-height:228px}.daily-look-style.has-sample .daily-look-style-art{height:126px;overflow:hidden;background:#F2ECEF}.daily-look-style-art img{display:block;width:100%;height:100%;object-fit:cover;object-position:center 36%}.daily-look-sample-open{position:absolute;top:9px;right:9px;display:grid;place-items:center;width:38px;height:38px;padding:9px;border:1px solid #E4D5DD;border-radius:50%;background:#FFFFFFEB;color:#6B1F3A;box-shadow:0 2px 8px #31102315}.daily-look-sample-open svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}.daily-look-sample-open:focus-visible{outline:2px solid #6B1F3A;outline-offset:2px}.daily-look-sample-overlay{position:fixed;inset:0;z-index:13070;display:flex;align-items:center;justify-content:center;padding:calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));background:#24121B99}.daily-look-sample-card{width:min(100%,440px);max-height:100%;overflow-y:auto;padding:18px;border-radius:24px;background:#fff;color:#33262E;box-shadow:0 24px 80px #1A0A1840}.daily-look-sample-card h2{margin:0;font:750 19px/1.3 'Manrope',sans-serif}.daily-look-sample-card .account-head{margin-bottom:12px}.daily-look-sample-image{display:block;width:100%;max-height:57svh;object-fit:contain;border-radius:15px;background:#F5F0F2}.daily-look-sample-image[hidden]{display:none}.daily-look-sample-description{margin:12px 0 5px;font:600 12px/1.5 'Manrope',sans-serif}.daily-look-sample-note{margin:0 0 14px;color:#8B7780;font:500 10px/1.5 'Manrope',sans-serif}.daily-look-sample-card .account-primary{width:100%}
 
+.daily-look-style-card.is-comparison{flex-basis:212px}.daily-look-style-art.is-comparison{position:relative}.daily-look-style-art.is-comparison img{object-fit:contain}.daily-look-comparison-labels{display:grid;grid-template-columns:1fr 1fr;text-align:center;gap:2px;color:#6B1F3A;font:700 10px/1.8 'Manrope',sans-serif}.daily-look-style-art .daily-look-comparison-labels{position:absolute;bottom:0;left:0;right:0;background:#FFFFFFE8}.daily-look-style-art .daily-look-comparison-labels span{display:block;margin:0;color:#6B1F3A;font-size:9px}.daily-look-sample-card>.daily-look-comparison-labels{margin-bottom:5px}
 /* Swipeable portrait shelves keep the photograph in view while browsing. */
 .daily-look-card{background:#fff!important}.daily-look-card .daily-look-preview{max-height:42svh;max-width:100%;width:min(100%,360px)}
 .daily-look-collections{display:flex;gap:18px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:none;margin:0 0 14px;padding:3px 2px 9px;border-bottom:1px solid #EFE7EA;-webkit-overflow-scrolling:touch}.daily-look-collections::-webkit-scrollbar,.daily-look-styles::-webkit-scrollbar{display:none}
@@ -14463,7 +14464,18 @@ function closeDailyLook() {
 // Only shipped illustrative assets are accepted; selecting a sample never
 // replaces the user's source photo or starts a generation request.
 const DAILY_LOOK_SAMPLE_IDS = new Set(["natural-polish", "selfie-polish", "selfie-soft-daylight", "selfie-indoor-balance", "selfie-low-light", "selfie-outdoor", "family-natural-group", "family-indoor-rescue", "family-celebration", "family-outdoor-balance", "mirror-cleanup", "mirror-selfie-enhance", "soft-daylight", "studio-clarity", "low-light-rescue", "outdoor-balance", "warm-glow", "classic-white-studio", "warm-ivory-studio", "charcoal-studio", "window-light-portrait", "luxury-minimal", "high-end-cafe", "golden-hour"]);
-const DAILY_LOOK_SAMPLE_REVISIONS = Object.freeze({"natural-polish": 2, "soft-daylight": 2, "studio-clarity": 2, "low-light-rescue": 2, "outdoor-balance": 2, "warm-glow": 2});
+const DAILY_LOOK_SAMPLE_REVISIONS = Object.freeze({"natural-polish": 2, "soft-daylight": 2, "studio-clarity": 2, "low-light-rescue": 2, "outdoor-balance": 2, "warm-glow": 2, "mirror-cleanup": 2, "mirror-selfie-enhance": 2});
+function isDailyLookComparisonSample(style) {
+  return style?.id === 'mirror-cleanup' || style?.id === 'mirror-selfie-enhance';
+}
+function createDailyLookComparisonLabels() {
+  const labels = document.createElement('div');
+  labels.className = 'daily-look-comparison-labels';
+  for (const text of ['Before', 'After']) {
+    const label = document.createElement('span'); label.textContent = text; labels.append(label);
+  }
+  return labels;
+}
 function dailyLookSampleAsset(style, thumbnail = false) {
   if (!DAILY_LOOK_SAMPLE_IDS.has(style?.id)) return null;
   const revision = DAILY_LOOK_SAMPLE_REVISIONS[style.id] || 1;
@@ -14520,7 +14532,12 @@ function openDailyLookSample(style, onSelect) {
     document.querySelector('#daily-look-styles .selected')?.focus({ preventScroll:true });
   };
   image.onerror = () => { image.hidden = true; note.textContent = 'Sample unavailable. You can still select this preset.'; };
-  dialog.append(header, image, description, note, use);
+  dialog.append(header);
+  if (isDailyLookComparisonSample(style)) {
+    image.alt = `${style.name}: illustrative before and after comparison`;
+    dialog.append(createDailyLookComparisonLabels());
+  }
+  dialog.append(image, description, note, use);
   overlay.append(dialog);
   overlay.onclick = event => { if (event.target === overlay) closeDailyLookSample(); };
   const keyHandler = event => {
@@ -14643,6 +14660,11 @@ function renderDailyLookStyles(styles = []) {
         previewButton?.remove();
       };
       art.append(sample);
+      if (isDailyLookComparisonSample(style)) {
+        wrapper.classList.add('is-comparison');
+        art.classList.add('is-comparison');
+        art.append(createDailyLookComparisonLabels());
+      }
       previewButton = document.createElement('button');
       previewButton.type = 'button'; previewButton.className = 'daily-look-sample-open';
       previewButton.setAttribute('aria-label', `Preview ${style.name} sample`);

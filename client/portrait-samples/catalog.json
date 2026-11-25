@@ -62,14 +62,14 @@
   "mirror-cleanup": {
     "name": "Mirror Cleanup",
     "collection": "Mirror Selfies",
-    "preview": "/portrait-samples/mirror-cleanup.v1.webp",
-    "thumbnail": "/portrait-samples/mirror-cleanup-thumb.v1.webp"
+    "preview": "/portrait-samples/mirror-cleanup.v2.webp",
+    "thumbnail": "/portrait-samples/mirror-cleanup-thumb.v2.webp"
   },
   "mirror-selfie-enhance": {
     "name": "Mirror Selfie Enhance",
     "collection": "Mirror Selfies",
-    "preview": "/portrait-samples/mirror-selfie-enhance.v1.webp",
-    "thumbnail": "/portrait-samples/mirror-selfie-enhance-thumb.v1.webp"
+    "preview": "/portrait-samples/mirror-selfie-enhance.v2.webp",
+    "thumbnail": "/portrait-samples/mirror-selfie-enhance-thumb.v2.webp"
   },
   "soft-daylight": {
     "name": "Soft Daylight",
