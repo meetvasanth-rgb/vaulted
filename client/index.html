@@ -14476,7 +14476,8 @@ function renderDailyLookStyles(styles = []) {
   holder.hidden = false;
   if (collectionHolder) collectionHolder.hidden = false;
   styles = styles.filter(style => style.id !== AVATAR_STYLE_ID && style.collection !== 'Professional');
-  const featured = styles.find(style => style.featured && style.available !== false) || styles.find(style => style.available !== false) || styles[0];
+  const featured = styles.find(style => style.collection === 'Surprise Me' && style.available !== false)
+    || styles.find(style => style.featured && style.available !== false) || styles.find(style => style.available !== false) || styles[0];
   if (!styles.some(style => style.id === dailyLookStyleId && style.available !== false)) dailyLookStyleId = featured?.id || null;
   const selectedStyle = styles.find(style => style.id === dailyLookStyleId) || featured;
   const collections = [...new Set(styles.map(style => style.collection || 'Portraits'))];
@@ -14619,6 +14620,7 @@ async function openDailyLook(options = {}) {
   }
   resetDailyLookView();
   dailyLookStyleId = avatarMode ? AVATAR_STYLE_ID : null;
+  dailyLookCollectionId = null;
   applyDailyLookMode(avatarMode);
   renderDailyLookStyles([]);
   document.getElementById('daily-look-overlay')?.classList.add('open');
