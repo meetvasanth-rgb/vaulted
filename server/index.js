@@ -3290,7 +3290,7 @@ function serveStatic(req, res) {
       ? 'application/json'
       : (t[path.extname(url)] || 'text/plain');
     const staticHeaders = {'Content-Type':contentType,'Content-Length':Buffer.byteLength(data)};
-    if (/^\/portrait-samples\/[a-z0-9-]+\.v1\.webp$/.test(url)) staticHeaders['Cache-Control'] = 'public, max-age=31536000, immutable';
+    if (/^\/portrait-samples\/[a-z0-9-]+\.v[1-9][0-9]*\.webp$/.test(url)) staticHeaders['Cache-Control'] = 'public, max-age=31536000, immutable';
     if (url === '/.well-known/apple-app-site-association') {
       // Apple normally fetches this through its own CDN. Do not encourage an
       // additional stale origin copy after paths (such as Private Numbers)

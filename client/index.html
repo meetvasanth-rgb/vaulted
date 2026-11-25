@@ -14463,9 +14463,11 @@ function closeDailyLook() {
 // Only shipped illustrative assets are accepted; selecting a sample never
 // replaces the user's source photo or starts a generation request.
 const DAILY_LOOK_SAMPLE_IDS = new Set(["natural-polish", "selfie-polish", "selfie-soft-daylight", "selfie-indoor-balance", "selfie-low-light", "selfie-outdoor", "family-natural-group", "family-indoor-rescue", "family-celebration", "family-outdoor-balance", "mirror-cleanup", "mirror-selfie-enhance", "soft-daylight", "studio-clarity", "low-light-rescue", "outdoor-balance", "warm-glow", "classic-white-studio", "warm-ivory-studio", "charcoal-studio", "window-light-portrait", "luxury-minimal", "high-end-cafe", "golden-hour"]);
+const DAILY_LOOK_SAMPLE_REVISIONS = Object.freeze({"natural-polish": 2, "soft-daylight": 2, "studio-clarity": 2, "low-light-rescue": 2, "outdoor-balance": 2, "warm-glow": 2});
 function dailyLookSampleAsset(style, thumbnail = false) {
   if (!DAILY_LOOK_SAMPLE_IDS.has(style?.id)) return null;
-  return `/portrait-samples/${style.id}${thumbnail ? '-thumb' : ''}.v1.webp`;
+  const revision = DAILY_LOOK_SAMPLE_REVISIONS[style.id] || 1;
+  return `/portrait-samples/${style.id}${thumbnail ? '-thumb' : ''}.v${revision}.webp`;
 }
 
 let dailyLookSampleCleanup = null;

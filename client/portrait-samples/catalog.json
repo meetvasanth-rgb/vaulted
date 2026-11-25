@@ -2,8 +2,8 @@
   "natural-polish": {
     "name": "Natural Polish",
     "collection": "Face Booster",
-    "preview": "/portrait-samples/natural-polish.v1.webp",
-    "thumbnail": "/portrait-samples/natural-polish-thumb.v1.webp"
+    "preview": "/portrait-samples/natural-polish.v2.webp",
+    "thumbnail": "/portrait-samples/natural-polish-thumb.v2.webp"
   },
   "selfie-polish": {
     "name": "Selfie Polish",
@@ -74,32 +74,32 @@
   "soft-daylight": {
     "name": "Soft Daylight",
     "collection": "Face Booster",
-    "preview": "/portrait-samples/soft-daylight.v1.webp",
-    "thumbnail": "/portrait-samples/soft-daylight-thumb.v1.webp"
+    "preview": "/portrait-samples/soft-daylight.v2.webp",
+    "thumbnail": "/portrait-samples/soft-daylight-thumb.v2.webp"
   },
   "studio-clarity": {
     "name": "Studio Clarity",
     "collection": "Face Booster",
-    "preview": "/portrait-samples/studio-clarity.v1.webp",
-    "thumbnail": "/portrait-samples/studio-clarity-thumb.v1.webp"
+    "preview": "/portrait-samples/studio-clarity.v2.webp",
+    "thumbnail": "/portrait-samples/studio-clarity-thumb.v2.webp"
   },
   "low-light-rescue": {
     "name": "Low-Light Rescue",
     "collection": "Face Booster",
-    "preview": "/portrait-samples/low-light-rescue.v1.webp",
-    "thumbnail": "/portrait-samples/low-light-rescue-thumb.v1.webp"
+    "preview": "/portrait-samples/low-light-rescue.v2.webp",
+    "thumbnail": "/portrait-samples/low-light-rescue-thumb.v2.webp"
   },
   "outdoor-balance": {
     "name": "Outdoor Balance",
     "collection": "Face Booster",
-    "preview": "/portrait-samples/outdoor-balance.v1.webp",
-    "thumbnail": "/portrait-samples/outdoor-balance-thumb.v1.webp"
+    "preview": "/portrait-samples/outdoor-balance.v2.webp",
+    "thumbnail": "/portrait-samples/outdoor-balance-thumb.v2.webp"
   },
   "warm-glow": {
     "name": "Warm Glow",
     "collection": "Face Booster",
-    "preview": "/portrait-samples/warm-glow.v1.webp",
-    "thumbnail": "/portrait-samples/warm-glow-thumb.v1.webp"
+    "preview": "/portrait-samples/warm-glow.v2.webp",
+    "thumbnail": "/portrait-samples/warm-glow-thumb.v2.webp"
   },
   "classic-white-studio": {
     "name": "Classic White",

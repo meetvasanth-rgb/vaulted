@@ -15,7 +15,8 @@ async function main() {
   const catalog = {};
   for (const row of rows) {
     if (!/^[a-z0-9-]+$/.test(row.id) || !row.source) throw new Error(`Missing approved source: ${row.id}`);
-    const preview = `${row.id}.v1.webp`, thumbnail = `${row.id}-thumb.v1.webp`;
+    const version = Number.isInteger(row.version) && row.version > 0 && row.version < 100 ? row.version : 1;
+    const preview = `${row.id}.v${version}.webp`, thumbnail = `${row.id}-thumb.v${version}.webp`;
     await sharp(row.source).rotate().resize({width:768,height:1024,fit:'inside',withoutEnlargement:true}).webp({quality:86,effort:5}).toFile(path.join(assets,preview));
     await sharp(row.source).rotate().resize({width:320,height:426,fit:'inside',withoutEnlargement:true}).webp({quality:78,effort:5}).toFile(path.join(assets,thumbnail));
     catalog[row.id] = {name:row.name,collection:row.collection,preview:`/portrait-samples/${preview}`,thumbnail:`/portrait-samples/${thumbnail}`};
@@ -26,7 +27,7 @@ async function main() {
   const layers = [];
   for (let i=0;i<sorted.length;i++) {
     const row=sorted[i],left=(i%6)*200,top=Math.floor(i/6)*285;
-    const tile=await sharp(path.join(assets,`${row.id}.v1.webp`)).resize(192,240,{fit:'contain',background:'#f6f1f3'}).toBuffer();
+    const tile=await sharp(path.join(assets,path.basename(catalog[row.id].preview))).resize(192,240,{fit:'contain',background:'#f6f1f3'}).toBuffer();
     layers.push({input:tile,left:left+4,top});
     const label=Buffer.from(`<svg width="200" height="45"><rect width="200" height="45" fill="white"/><text x="8" y="17" font-size="12" font-family="sans-serif" fill="#482535">${escapeXml(row.name)}</text><text x="8" y="34" font-size="10" font-family="sans-serif" fill="#88727d">${escapeXml(row.collection)}</text></svg>`);
     layers.push({input:label,left,top:top+240});

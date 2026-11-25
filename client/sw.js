@@ -2,7 +2,7 @@
 // shell available for an offline launch. API responses, ciphertext, account
 // data, messages and keys are deliberately never written to this cache.
 
-const APP_SHELL_CACHE = 'vaultlix-app-shell-v302';
+const APP_SHELL_CACHE = 'vaultlix-app-shell-v303';
 const APP_SHELL_FILES = [
   '/',
   '/index.html',
@@ -140,7 +140,7 @@ self.addEventListener('fetch', (event) => {
   // and offline startup without risking an old app paired with a new shell.
   if (/^\/(?:app-shell|app-core)\.[a-f0-9]{16}\.(?:css|js)$/.test(url.pathname)
       || /^\/vendor\/qrcode\.[a-f0-9]{16}\.js$/.test(url.pathname)
-      || /^\/portrait-samples\/[a-z0-9-]+\.v1\.webp$/.test(url.pathname)) {
+      || /^\/portrait-samples\/[a-z0-9-]+\.v[1-9][0-9]*\.webp$/.test(url.pathname)) {
     event.respondWith((async () => {
       const cache = await caches.open(APP_SHELL_CACHE);
       const cached = await cache.match(request, { ignoreSearch:true });
