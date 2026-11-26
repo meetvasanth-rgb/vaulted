@@ -83,12 +83,10 @@
       "prompt": "Use case: identity-preserve. Edit the referenced preset sample into ONE plausible unprocessed BEFORE photograph for an illustrative before/after slider. The reference itself is the AFTER. Preserve the exact people and their age, facial geometry, eyes, nose, mouth, expression, hair, skin hue and permanent marks, proportions, hands, clothes, pose, camera angle, crop and all background objects. Do NOT redraw faces, change model, beautify, add blemishes, age anyone, alter anatomy or add objects. Make only the requested modest photographic capture defect. The before photo must remain a realistic, usable ordinary photograph, not deliberately ruined, grotesque or artificially ugly. No text, labels, borders, split panels, collage, logos or watermark. One vertical 3:4 photograph aligned exactly to the reference.\nPhotographic difference: For this one sample only, replace the white seamless studio backdrop with a real modest neutral apartment wall and a small distant plant, as the unprocessed input before a studio-background transformation. The same young Black woman, exact face geometry, hairstyle, expression, olive blouse, skin depth, head size, crop and pose must stay unchanged. Slightly dull indoor exposure and ordinary uneven room light, not a professionally lit seamless studio. No jewellery or clothing changes."
     },
     {
-      "id": "high-end-cafe",
-      "prompt": "The original fictional young male portrait, prior to the café setting or golden-hour grade, reused as the illustrative source."
+      "id": "high-end-cafe"
     },
     {
-      "id": "golden-hour",
-      "prompt": "The original fictional young male portrait, prior to the café setting or golden-hour grade, reused as the illustrative source."
+      "id": "golden-hour"
     }
   ]
 }

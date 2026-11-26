@@ -198,21 +198,21 @@
     "comparisonLayout": "separate"
   },
   "high-end-cafe": {
-    "name": "High-End Caf\u00e9",
+    "name": "High-End Café",
     "collection": "Lifestyle",
-    "preview": "/portrait-samples/high-end-cafe.v1.webp",
-    "thumbnail": "/portrait-samples/high-end-cafe-thumb.v1.webp",
-    "before": "/portrait-samples/high-end-cafe-before.v1.webp",
-    "beforeThumbnail": "/portrait-samples/high-end-cafe-before-thumb.v1.webp",
+    "preview": "/portrait-samples/high-end-cafe.v2.webp",
+    "thumbnail": "/portrait-samples/high-end-cafe-thumb.v2.webp",
+    "before": "/portrait-samples/high-end-cafe-before.v2.webp",
+    "beforeThumbnail": "/portrait-samples/high-end-cafe-before-thumb.v2.webp",
     "comparisonLayout": "separate"
   },
   "golden-hour": {
     "name": "Golden Hour",
     "collection": "Lifestyle",
-    "preview": "/portrait-samples/golden-hour.v1.webp",
-    "thumbnail": "/portrait-samples/golden-hour-thumb.v1.webp",
-    "before": "/portrait-samples/golden-hour-before.v1.webp",
-    "beforeThumbnail": "/portrait-samples/golden-hour-before-thumb.v1.webp",
+    "preview": "/portrait-samples/golden-hour.v2.webp",
+    "thumbnail": "/portrait-samples/golden-hour-thumb.v2.webp",
+    "before": "/portrait-samples/golden-hour-before.v2.webp",
+    "beforeThumbnail": "/portrait-samples/golden-hour-before-thumb.v2.webp",
     "comparisonLayout": "separate"
   }
 }

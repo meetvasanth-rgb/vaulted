@@ -1,6 +1,6 @@
 {
   "generator": "Built-in image generation tool",
-  "subjects": "Fictional young adults, approximately 22–28; approved burgundy-blouse replacement in all group samples",
+  "subjects": "Fictional young adults, approximately 22–28; approved burgundy-blouse replacement in all group samples; Lifestyle: fictional Southeast Asian woman aged 25 in a lavender linen blouse",
   "purpose": "Illustrative preset examples, not guaranteed outputs or customer photographs",
   "presets": [
     {
@@ -139,13 +139,13 @@
       "id": "high-end-cafe",
       "name": "High-End Café",
       "collection": "Lifestyle",
-      "prompt": "Use case: identity-preserve. Edit target: referenced fictional young adult portrait. Create ONE sample for high-end-cafe. Same young South Asian man age 25, exact face, hair, light stubble, natural medium brown complexion and clay-red shirt, in a realistically scaled contemporary café at 5–6 PM. Seated environmental chest-up portrait, broad directional window light mixed with gentle warm practical lamp fill, subtle occupied background and warm bokeh without exaggerated blur. Natural skin colour and readable eyes, 5000–5200K warm-neutral photographic balance. No oversized pasted-in head or body. Plausible eye-level 50mm camera perspective. Natural photographic realism is essential: preserve fine skin texture, realistic eyes and age, slight facial asymmetry. Do not beautify, alter facial features, whiten, smooth to plastic, make CGI or change ethnicity. Vertical 3:4, centered person with headroom, single photograph, no text, border, collage, logo or watermark."
+      "prompt": "Use case: photorealistic-natural. Asset type: illustrative High-End Café preset sample for a portrait app. Create ONE vertical 3:4 realistic casual camera portrait of a completely fictional Southeast Asian young ADULT WOMAN, age 25, warm medium tan complexion, dark brown almond-shaped eyes, natural straight black shoulder-length hair loosely tucked behind one ear, small simple silver earrings, wearing a plain muted sage-green linen blouse. Friendly relaxed closed-mouth smile, youthful adult facial proportions, genuine skin pores and subtle small imperfections, light natural makeup only. Chest-up, eye-level portrait with head and shoulders comfortably centered and anatomically correct. She is seated naturally in a refined modern café at early evening, window at left mixing soft late daylight with warm practical pendant lamps, tasteful walnut furniture, soft background patrons and plants, believable café scale relative to person, subtle optical bokeh. Subject face is gently uplifted by flattering soft neutral-warm fill while retaining natural skin tone and texture, around a 5200K photographic white balance; balanced highlights and open shadows. Authentic ordinary person photographed in an attractive place, NOT fashion beauty retouching. No exaggerated features, facial distortion, overly perfect symmetry, waxy skin, plastic CGI, skin whitening, illustration, text, collage, border, logos or watermark. Single vertical portrait, no before/after panels.",
+      "refinementPrompt": "Use case: identity-preserve, precise-object-edit. Input image is the EDIT TARGET, the fictional Southeast Asian adult woman seated in a café. Change ONLY the colour of her sage-green linen blouse to a tasteful soft muted lavender, preserving the same linen texture, seams, buttons, folds, neckline, natural shadows and fabric highlights. Keep her face, facial identity, skin tone, skin texture, expression, hair, silver earrings, body, pose, camera framing and every background detail exactly unchanged. Keep all photographic lighting unchanged. Realistic photograph, no extra retouching, no skin smoothing or skin whitening. Single vertical 3:4 photograph, no text, collage, borders or watermark."
     },
     {
       "id": "golden-hour",
       "name": "Golden Hour",
-      "collection": "Lifestyle",
-      "prompt": "Use case: identity-preserve. Edit target: referenced fictional young adult portrait. Create ONE sample for golden-hour. Keep this young South Asian man age 25 and his exact face, shirt, pose, original living room and framing. Change ONLY photographic light and colour to subtle late-afternoon golden window light, with neutral sky-like fill on the face. Soft warm highlights on wall and shirt, natural neutral medium brown skin, identical geometry and texture. No generated facial detail, background replacement, added sun flares or deep orange skin. Natural photographic realism is essential: preserve fine skin texture, realistic eyes and age, slight facial asymmetry. Do not beautify, alter facial features, whiten, smooth to plastic, make CGI or change ethnicity. Vertical 3:4, centered person with headroom, single photograph, no text, border, collage, logo or watermark."
+      "collection": "Lifestyle"
     }
   ]
 }
