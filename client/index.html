@@ -14473,7 +14473,7 @@ function isDailyLookComparisonSample(style) {
 function dailyLookBeforeSampleAsset(style, thumbnail = false) {
   if (!DAILY_LOOK_SAMPLE_IDS.has(style?.id)) return null;
   if (style.id === 'mirror-cleanup' || style.id === 'mirror-selfie-enhance') return dailyLookSampleAsset(style, thumbnail);
-  const revision = ['selfie-soft-daylight', 'high-end-cafe', 'golden-hour'].includes(style.id) ? 2 : 1;
+  const revision = style.id === 'high-end-cafe' ? 3 : ['selfie-soft-daylight', 'golden-hour'].includes(style.id) ? 2 : 1;
   return `/portrait-samples/${style.id}-before${thumbnail ? '-thumb' : ''}.v${revision}.webp`;
 }
 function createDailyLookComparisonSlider(style, { thumbnail = false, onError } = {}) {

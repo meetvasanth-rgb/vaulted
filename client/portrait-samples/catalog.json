@@ -202,8 +202,8 @@
     "collection": "Lifestyle",
     "preview": "/portrait-samples/high-end-cafe.v2.webp",
     "thumbnail": "/portrait-samples/high-end-cafe-thumb.v2.webp",
-    "before": "/portrait-samples/high-end-cafe-before.v2.webp",
-    "beforeThumbnail": "/portrait-samples/high-end-cafe-before-thumb.v2.webp",
+    "before": "/portrait-samples/high-end-cafe-before.v3.webp",
+    "beforeThumbnail": "/portrait-samples/high-end-cafe-before-thumb.v3.webp",
     "comparisonLayout": "separate"
   },
   "golden-hour": {
