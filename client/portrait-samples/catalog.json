@@ -20,10 +20,10 @@
   "selfie-soft-daylight": {
     "name": "Soft Daylight",
     "collection": "Selfies",
-    "preview": "/portrait-samples/selfie-soft-daylight.v1.webp",
-    "thumbnail": "/portrait-samples/selfie-soft-daylight-thumb.v1.webp",
-    "before": "/portrait-samples/selfie-soft-daylight-before.v1.webp",
-    "beforeThumbnail": "/portrait-samples/selfie-soft-daylight-before-thumb.v1.webp",
+    "preview": "/portrait-samples/selfie-soft-daylight.v2.webp",
+    "thumbnail": "/portrait-samples/selfie-soft-daylight-thumb.v2.webp",
+    "before": "/portrait-samples/selfie-soft-daylight-before.v2.webp",
+    "beforeThumbnail": "/portrait-samples/selfie-soft-daylight-before-thumb.v2.webp",
     "comparisonLayout": "separate"
   },
   "selfie-indoor-balance": {
@@ -198,7 +198,7 @@
     "comparisonLayout": "separate"
   },
   "high-end-cafe": {
-    "name": "High-End Café",
+    "name": "High-End Caf\u00e9",
     "collection": "Lifestyle",
     "preview": "/portrait-samples/high-end-cafe.v1.webp",
     "thumbnail": "/portrait-samples/high-end-cafe-thumb.v1.webp",

@@ -21,7 +21,8 @@ async function main() {
     await sharp(row.source).rotate().resize({width:320,height:426,fit:'inside',withoutEnlargement:true}).webp({quality:78,effort:5}).toFile(path.join(assets,thumbnail));
     catalog[row.id] = {name:row.name,collection:row.collection,preview:`/portrait-samples/${preview}`,thumbnail:`/portrait-samples/${thumbnail}`};
     if (row.beforeSource) {
-      const before = `${row.id}-before.v1.webp`, beforeThumbnail = `${row.id}-before-thumb.v1.webp`;
+      const beforeVersion = Number.isInteger(row.beforeVersion) && row.beforeVersion > 0 && row.beforeVersion < 100 ? row.beforeVersion : 1;
+      const before = `${row.id}-before.v${beforeVersion}.webp`, beforeThumbnail = `${row.id}-before-thumb.v${beforeVersion}.webp`;
       await sharp(row.beforeSource).rotate().resize({width:768,height:1024,fit:'inside',withoutEnlargement:true}).webp({quality:86,effort:5}).toFile(path.join(assets,before));
       await sharp(row.beforeSource).rotate().resize({width:320,height:426,fit:'inside',withoutEnlargement:true}).webp({quality:78,effort:5}).toFile(path.join(assets,beforeThumbnail));
       Object.assign(catalog[row.id],{before:`/portrait-samples/${before}`,beforeThumbnail:`/portrait-samples/${beforeThumbnail}`,comparisonLayout:'separate'});

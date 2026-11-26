@@ -14466,14 +14466,15 @@ function closeDailyLook() {
 // Only shipped illustrative assets are accepted; selecting a sample never
 // replaces the user's source photo or starts a generation request.
 const DAILY_LOOK_SAMPLE_IDS = new Set(["natural-polish", "selfie-polish", "selfie-soft-daylight", "selfie-indoor-balance", "selfie-low-light", "selfie-outdoor", "family-natural-group", "family-indoor-rescue", "family-celebration", "family-outdoor-balance", "mirror-cleanup", "mirror-selfie-enhance", "soft-daylight", "studio-clarity", "low-light-rescue", "outdoor-balance", "warm-glow", "classic-white-studio", "warm-ivory-studio", "charcoal-studio", "window-light-portrait", "luxury-minimal", "high-end-cafe", "golden-hour"]);
-const DAILY_LOOK_SAMPLE_REVISIONS = Object.freeze({"natural-polish": 2, "soft-daylight": 2, "studio-clarity": 2, "low-light-rescue": 2, "outdoor-balance": 2, "warm-glow": 2, "mirror-cleanup": 2, "mirror-selfie-enhance": 2});
+const DAILY_LOOK_SAMPLE_REVISIONS = Object.freeze({"selfie-soft-daylight": 2, "natural-polish": 2, "soft-daylight": 2, "studio-clarity": 2, "low-light-rescue": 2, "outdoor-balance": 2, "warm-glow": 2, "mirror-cleanup": 2, "mirror-selfie-enhance": 2});
 function isDailyLookComparisonSample(style) {
   return DAILY_LOOK_SAMPLE_IDS.has(style?.id);
 }
 function dailyLookBeforeSampleAsset(style, thumbnail = false) {
   if (!DAILY_LOOK_SAMPLE_IDS.has(style?.id)) return null;
   if (style.id === 'mirror-cleanup' || style.id === 'mirror-selfie-enhance') return dailyLookSampleAsset(style, thumbnail);
-  return `/portrait-samples/${style.id}-before${thumbnail ? '-thumb' : ''}.v1.webp`;
+  const revision = style.id === 'selfie-soft-daylight' ? 2 : 1;
+  return `/portrait-samples/${style.id}-before${thumbnail ? '-thumb' : ''}.v${revision}.webp`;
 }
 function createDailyLookComparisonSlider(style, { thumbnail = false, onError } = {}) {
   if (!isDailyLookComparisonSample(style)) return null;
