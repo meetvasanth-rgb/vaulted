@@ -209,7 +209,8 @@ const INLINE_ATTACHMENT_MIGRATION_MIN_BYTES = 8 * 1024;
 // midnight boundary configurable for a later regional rollout while making
 // today's product promise an exact 12:00 AM IST reset on every replica.
 const DAILY_LOOK_RESET_OFFSET_MINUTES = (() => {
-  const configured = Number(process.env.DAILY_LOOK_RESET_OFFSET_MINUTES);
+  const raw = String(process.env.DAILY_LOOK_RESET_OFFSET_MINUTES || '').trim();
+  const configured = raw ? Number(raw) : NaN;
   return Number.isFinite(configured) && configured >= -720 && configured <= 840 ? configured : 330;
 })();
 const DAILY_LOOK_CLAIM_TIMEOUT_MS = 3 * 60 * 1000;
@@ -4582,6 +4583,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       testing:true,
       limit:DAILY_LOOK_DAILY_LIMIT,
       remaining:usage.remaining,
+      resetsAt:dailyLookDayWindow().nextAt,
       configured:!!(OPENAI_API_KEY || GEMINI_API_KEY),
       styles:publicDailyLookStyles(),
       // For the account's own app only: whether it is old enough, and has never made one, for the nudge.

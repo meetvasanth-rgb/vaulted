@@ -203,7 +203,7 @@ test('the per-account rotation seed is unbounded and applied by modulo at the st
   assert.match(server, /dailyLookVariantIndex\(d\.accountId, usage\.count, now\)/);
 });
 
-test('Daily Look offers etched camera, gallery and file source icons inside the preview', () => {
+test('Daily Look offers camera, gallery and file source icons inside the preview', () => {
   assert.match(client, /id="daily-look-source-tools-template"/);
   assert.match(client, /id="daily-look-camera-input"[^>]*accept="image\/\*"[^>]*capture="environment"/);
   assert.match(client, /id="daily-look-camera-button"[^>]*onclick="chooseDailyLookCamera\(\)"[^>]*aria-label="Take photo"/);
@@ -213,7 +213,7 @@ test('Daily Look offers etched camera, gallery and file source icons inside the 
   assert.match(client, /\.daily-look-photo-actions\{position:absolute/);
   assert.match(client, /\.daily-look-photo-actions\{[^}]*top:50%[^}]*translate\(-50%,-50%\)/);
   assert.match(client, /\.daily-look-preview-copy\{[^}]*bottom:28px/);
-  assert.match(client, /\.daily-look-source-button svg \.sketch-light/);
+  assert.match(client, /\.daily-look-source-button svg \.source-icon-accent/);
   assert.match(client, /function chooseDailyLookCamera\(\)/);
   assert.match(client, /function chooseDailyLookFile\(\)/);
   assert.match(client, /function createDailyLookSourceTools\(\)/);
