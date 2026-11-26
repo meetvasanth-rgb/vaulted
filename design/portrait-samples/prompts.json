@@ -145,7 +145,8 @@
     {
       "id": "golden-hour",
       "name": "Golden Hour",
-      "collection": "Lifestyle"
+      "collection": "Lifestyle",
+      "prompt": "Use case: identity-preserve and lighting-weather. Use the referenced fictional Southeast Asian adult woman as the EXACT identity and pose reference for ONE Golden Hour preset sample photograph. Keep her face, facial structure, expression, hair silhouette, warm tan skin tone, silver earrings, lavender linen blouse, chest-up pose, camera position and vertical 3:4 framing identical. Replace only the café setting with a peaceful neutral living room beside a window, cream plaster wall, a modest sofa and a small plant in soft background focus. The Golden Hour effect must be easy to recognize: late afternoon golden sunlight warmly catches the hair and shoulder from image left, soft sunlit patches across the background wall, warm luminous environmental light. Her FACE keeps natural realistic skin colour, pores and anatomy, softly balanced neutral-warm fill with eyes clear, NO orange skin, no artificial face redraw or texture smoothing. Quiet candid photo of a real ordinary adult, believable scale and anatomy. Single vertical realistic photograph, no text, panels, borders, collage, logos or watermark."
     }
   ]
 }
