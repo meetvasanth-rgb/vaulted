@@ -125,8 +125,7 @@ test('Golden Hour uses a non-generative grade so face pixels are never reconstru
   assert.match(server, /style\.processor === 'local'\) return createLocalGoldenHour\(image, canvas\)/);
   assert.match(server, /style\.processor === 'local' \|\| \(style\.provider === 'gemini'/);
   assert.match(server, /style\.processor !== 'local' && style\.provider !== 'gemini'/);
-  assert.match(server, /\.modulate\(\{ brightness:1\.025, saturation:1\.055 \}\)/);
-  assert.match(server, /\.jpeg\(\{ quality:92, chromaSubsampling:'4:4:4' \}\)/);
+  assert.match(server, /await gradeGoldenHour\(image\.bytes, canvas\.sourceWidth, canvas\.sourceHeight\)/);
 });
 
 test('curated portrait presets route server-side between OpenAI and Gemini without exposing prompts or keys', () => {

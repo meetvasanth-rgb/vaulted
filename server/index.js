@@ -9,6 +9,7 @@ const clientShell = compileClientShell({ clientDir:path.join(__dirname, '../clie
 const crypto = require('crypto');
 const { promisify } = require('util');
 const sharp = require('sharp');
+const { gradeGoldenHour } = require('./golden-hour');
 const webpush = require('web-push');
 const { WebSocketServer } = require('ws');
 const { initializeApp, cert } = require('firebase-admin/app');
@@ -1637,19 +1638,7 @@ async function finishDailyLookImage(base64, sourceWidth, sourceHeight) {
 }
 
 async function createLocalGoldenHour(image, canvas) {
-  // This preset deliberately avoids a generative model. A restrained colour
-  // transform can warm the photograph without reconstructing a face, altering
-  // text or moving any scene detail. Sharp also strips source metadata here.
-  const output = await sharp(image.bytes, { limitInputPixels:60 * 1000 * 1000 })
-    .resize(canvas.sourceWidth, canvas.sourceHeight, { fit:'cover', position:'centre' })
-    .modulate({ brightness:1.025, saturation:1.055 })
-    .recomb([
-      [1.035, 0.012, 0.000],
-      [0.004, 1.008, 0.000],
-      [0.000, 0.004, 0.955],
-    ])
-    .jpeg({ quality:92, chromaSubsampling:'4:4:4' })
-    .toBuffer();
+  const output = await gradeGoldenHour(image.bytes, canvas.sourceWidth, canvas.sourceHeight);
   return `data:image/jpeg;base64,${output.toString('base64')}`;
 }
 
@@ -4670,10 +4659,10 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const usage = dailyLookUsage(account, now);
     if (usage.remaining <= 0) {
       res.setHeader('Cache-Control', 'no-store');
-      return resErr(res, 'You have created ten portraits. Your next one will be available tomorrow.', 429);
+      return resErr(res, `You have created ${DAILY_LOOK_DAILY_LIMIT} portraits. Your next one will be available tomorrow.`, 429);
     }
     if (!(await claimDailyLook(d.accountId, account, now))) {
-      return resErr(res, 'A portrait is already being created, or today’s ten portraits are complete.', 429);
+      return resErr(res, `A portrait is already being created, or today’s ${DAILY_LOOK_DAILY_LIMIT} portraits are complete.`, 429);
     }
     try {
       // OpenAI edits are pre-moderated with the same provider. Gemini image
@@ -4718,6 +4707,9 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     } catch (error) {
       await releaseDailyLookClaim(d.accountId).catch(() => {});
       console.warn(`Daily Look provider request failed (${String(error?.message || 'unknown').slice(0, 32)}).`);
+      if (error?.message === 'golden-hour-no-visible-change') {
+        return resErr(res, 'Golden Hour could not make a visible lighting change to this photo. No portrait attempt was used. Try another photo.', 422);
+      }
       return resErr(res, 'Portrait Studio could not create your portrait. Your daily creation is still available.', 502);
     }
   }
