@@ -1432,6 +1432,19 @@ async function rateLimited(key, maxCount, windowMs) {
   return bucket.count > maxCount;
 }
 
+const ACCOUNT_LOGIN_WINDOW_MS = 15 * 60 * 1000;
+function accountLoginFailureKey(ip, privateNumber, now = Date.now()) {
+  const identity = crypto.createHash('sha256').update(`${ip}\0${normalizePrivateNumber(privateNumber) || 'invalid'}`).digest('hex');
+  // Keep the reservation tied to its original window even if verification
+  // completes just after the boundary; it must not refund the next window.
+  return `account-login-failures-v2:${identity}:${Math.floor(now / ACCOUNT_LOGIN_WINDOW_MS)}`;
+}
+async function refundRateLimit(key) {
+  if (await realtimeCoordinator.refundRateLimit(key) !== null) return;
+  const bucket = rateLimitBuckets.get(key);
+  if (bucket) bucket.count = Math.max(0, bucket.count - 1);
+}
+
 async function profileLookupRetryAfter(headers, ip) {
   const suppliedKey = String((headers && headers['x-vaultlix-lookup-key']) || '');
   const deviceKey = /^[A-Za-z0-9_-]{20,128}$/.test(suppliedKey) ? suppliedKey : `ip:${ip}`;
@@ -3971,7 +3984,18 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   }
 
   if (path === '/api/account/login' && method === 'POST') {
-    if (await rateLimited(`account-login:${ip}`, 10, 15 * 60 * 1000)) return resErr(res, 'Too many login attempts — try again later.', 429);
+    // A coarse IP budget still bounds password-checking work. The stricter
+    // budget belongs to one number on that connection, rather than everybody
+    // sharing office Wi-Fi. Successful password checks refund their slot.
+    if (await rateLimited(`account-login-traffic-v2:${ip}`, 60, ACCOUNT_LOGIN_WINDOW_MS)) {
+      return resErr(res, 'Too many sign-in requests from this connection — try again later.', 429);
+    }
+    const loginAttemptAt = Date.now();
+    const loginFailureKey = accountLoginFailureKey(ip, d.privateNumber, loginAttemptAt);
+    if (await rateLimited(loginFailureKey, 10, ACCOUNT_LOGIN_WINDOW_MS)) {
+      res.setHeader('Retry-After', String(Math.max(1, Math.ceil((ACCOUNT_LOGIN_WINDOW_MS - loginAttemptAt % ACCOUNT_LOGIN_WINDOW_MS) / 1000))));
+      return resErr(res, 'Too many login attempts for this number — try again later.', 429);
+    }
     const found = accountByPrivateNumber(d.privateNumber);
     const account = found?.account || null;
     // Always perform a scrypt check, including for an unknown ID, to avoid a
@@ -3979,6 +4003,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const verifier = account ? account.authVerifier : DUMMY_ACCOUNT_VERIFIER;
     const valid = await verifyAccountSecret(d.authSecret, verifier);
     if (!account || !valid) return resErr(res, 'Vaultlix Private Number or password is incorrect.', 403);
+    await refundRateLimit(loginFailureKey);
     if (await safetyStore.isSuspended(found.accountId)) return resErr(res, 'This account has been suspended.', 403);
     const sessionToken = await replaceAccountLoginSession(found.accountId, account, accountDeviceHash(d.deviceId));
     account.lastLogin = loginLocation(ip, headers?.['user-agent']);

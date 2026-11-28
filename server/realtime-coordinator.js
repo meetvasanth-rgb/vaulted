@@ -139,6 +139,19 @@ class RealtimeCoordinator {
     } catch (error) { return null; }
   }
 
+  // Undo one authenticated reservation without clearing concurrent failures
+  // or extending the expiry. Never create a negative/immortal Redis counter.
+  async refundRateLimit(key) {
+    if (!this.ready) return null;
+    try {
+      await this.publisher.eval(
+        "local n=tonumber(redis.call('GET',KEYS[1]) or '0'); if n>0 then return redis.call('DECR',KEYS[1]) end; return 0",
+        { keys:[this.rateKey(key)], arguments:[] },
+      );
+      return true;
+    } catch (error) { return null; }
+  }
+
   async isRateLimited(key, maxCount) {
     if (!this.ready) return null;
     try { return Number(await this.publisher.get(this.rateKey(key)) || 0) >= maxCount; }
