@@ -30,7 +30,7 @@ test('the "Forward" button on the selection bar requires every selected message 
   const controller = extract(client, 'directSelectionController');
   assert.match(controller, /canForward: \(items\.length > 0 && items\.every\(item => messageForwardable\(item\.entry\.rec\)\)\) \|\| \(!!one && rec\?\.kind === 'voice'\)/);
   const groupController = extract(groups, 'groupSelectionController');
-  assert.match(groupController, /canForward: \(ids\.length > 0 && ids\.every\(item => usableRow\(item\) && \['text', 'image', 'file'\]\.includes\(groupMessageKind\(messageOf\(item\)\)\)\)\)/);
+  assert.match(groupController, /canForward: \(ids\.length > 0 && ids\.every\(item => usableRow\(item\) && \['text', 'image', 'file', 'album'\]\.includes\(groupMessageKind\(messageOf\(item\)\)\)\)\)/);
   assert.match(groupController, /\|\| \(!!id && usableRow\(id\) && kind === 'voice'\)/);
 });
 
@@ -71,6 +71,7 @@ test('the group forward path builds one record per message, drops what cannot be
   const calls = [];
   const context = vm.createContext({
     Map, Set,
+    activePrivateGroupId: 'source-group',
     privateGroupMessageById: id => ({ a:{ id:'a', text:'hi' }, b:{ id:'b', attachment:{ type:'group-voice' } }, c:{ id:'c', text:'ok' }, d:{ id:'d' } }[id]),
     groupMessageKind: message => (message.text !== undefined ? 'text' : 'voice'),
     privateGroupTextById: id => ({ a:'hi', c:'ok' }[id] || null),
@@ -84,7 +85,7 @@ test('the group forward path builds one record per message, drops what cannot be
   vm.runInContext("forwardPrivateGroupMessages(['a', 'b', 'c', 'd'])", context);
   assert.deepEqual(JSON.parse(JSON.stringify(calls)), ['closed', ['picker',
     [{ kind:'text', text:'hi' }, { kind:'voice', mime:'audio/webm', base64:'d29ya' }, { kind:'text', text:'ok' }],
-    { includeActiveRoom:true }]]);
+    { includeActiveRoom:true, sourceGroupId:'source-group' }]]);
 });
 
 test('forwarding to a room resends only what failed on a retry, and never a message twice', async () => {

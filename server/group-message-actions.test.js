@@ -121,7 +121,7 @@ test('a group message is selected by long-press; unreadable ones only offer Dele
   // Forward also opens for a single voice note, purely to reach Share externally
   // inside that sheet — a voice note itself is never sent into Vaultlix that way.
   assert.match(controller, /canReply: !!id && usableRow\(id\)/);
-  assert.match(controller, /canForward: \(ids\.length > 0 && ids\.every\(item => usableRow\(item\) && \['text', 'image', 'file'\]\.includes\(groupMessageKind\(messageOf\(item\)\)\)\)\)/);
+  assert.match(controller, /canForward: \(ids\.length > 0 && ids\.every\(item => usableRow\(item\) && \['text', 'image', 'file', 'album'\]\.includes\(groupMessageKind\(messageOf\(item\)\)\)\)\)/);
   assert.match(controller, /\|\| \(!!id && usableRow\(id\) && kind === 'voice'\)/);
   assert.match(controller, /canCopy: ids\.length > 0 && ids\.every\(item => usableRow\(item\) && groupMessageKind\(messageOf\(item\)\) === 'text'/);
   assert.match(controller, /canSave: !!id && usableRow\(id\) && \['image', 'file', 'voice'\]\.includes\(kind\)/);

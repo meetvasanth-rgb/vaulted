@@ -65,7 +65,7 @@ test('Forward opens for a single voice note too, purely to reach Share (a voice 
   const direct = extract(client, 'directSelectionController');
   assert.match(direct, /canForward: \(items\.length > 0 && items\.every\(item => messageForwardable\(item\.entry\.rec\)\)\) \|\| \(!!one && rec\?\.kind === 'voice'\)/);
   const group = extract(groups, 'groupSelectionController');
-  assert.match(group, /canForward: \(ids\.length > 0 && ids\.every\(item => usableRow\(item\) && \['text', 'image', 'file'\]\.includes\(groupMessageKind\(messageOf\(item\)\)\)\)\)\s*\n\s*\|\| \(!!id && usableRow\(id\) && kind === 'voice'\)/);
+  assert.match(group, /canForward: \(ids\.length > 0 && ids\.every\(item => usableRow\(item\) && \['text', 'image', 'file', 'album'\]\.includes\(groupMessageKind\(messageOf\(item\)\)\)\)\)\s*\n\s*\|\| \(!!id && usableRow\(id\) && kind === 'voice'\)/);
   // messageForwardable itself is unchanged: voice never goes into the Vaultlix send path.
   assert.match(client, /function messageForwardable\(rec\) \{\s*return !!rec && \['file', 'album', 'text'\]\.includes\(rec\.kind\)/);
 });
@@ -82,7 +82,7 @@ test('the Forward sheet shows a "Share to another app" row for a single photo, v
   assert.match(fn, /shareButton\.onclick = \(\) => \{ close\(\); shareMessageRecord\(shareRec\); \};/);
   // A voice note (not in `recs`, the in-Vaultlix-forward list) still gets a sheet via shareRec.
   assert.match(fn, /if \(!recs\.length && !shareRec\) \{/);
-  assert.match(fn, /const targets = recs\.length \? \[\.\.\.rooms\.values\(\)\]\.filter/);
+  assert.match(fn, /const targets = recs\.length \? forwardConversationTargets\(options\) : \[\]/);
 });
 
 test('the full-screen photo viewer keeps its own Share button next to Save, for both direct and group photos, not for view-once', () => {

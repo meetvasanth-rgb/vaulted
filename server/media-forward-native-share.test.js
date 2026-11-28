@@ -38,12 +38,11 @@ test('ordinary image and file messages can be forwarded into another encrypted c
   assert.match(client, /input\.length === 1 && input\[0\]\?\.viewOnce \? 'View-once photos cannot be forwarded'/);
 });
 
-test('forward picker filters contacts and confirms the selected recipient immediately', () => {
-  assert.match(client, /data-forward-search placeholder="Search contacts"/);
-  assert.match(client, /safeProfileImageUri\(room\.peerProfileImage\)/);
-  assert.match(client, /profileImage[\s\S]{0,140}<img src="\$\{profileImage\}"/);
+test('forward picker searches contacts and groups, then sends an explicit multi-selection', () => {
+  assert.match(client, /data-forward-search placeholder="Search contacts and groups"/);
+  assert.match(client, /displayProfileImageUri\(room\.peerProfileImage\)/);
   assert.match(client, /button\.dataset\.forwardName\.includes\(query\)/);
-  assert.match(client, /textContent = 'Sending…'/);
-  assert.match(client, /textContent = '✓ Sent'/);
-  assert.match(client, /setTimeout\(close, 550\)/);
+  assert.match(client, /role="checkbox" aria-checked="false"/);
+  assert.match(client, /data-forward-send disabled/);
+  assert.match(client, /sendForwardBatch\(targets\.filter/);
 });

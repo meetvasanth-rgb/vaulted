@@ -373,14 +373,15 @@ async function fetchPrivateGroupAttachment(state, group, attachmentId, messageId
   throw lastError;
 }
 
-async function sendPrivateGroupAttachment(payload, onProgress) {
-  const state = loadAccountState(); const group = privateGroups.get(activePrivateGroupId);
+async function sendPrivateGroupAttachment(payload, onProgress, groupId = activePrivateGroupId) {
+  const state = loadAccountState(); const group = privateGroups.get(groupId);
   const key = group?.keys?.[group?.keyVersion];
   if (!state || !group || !key) throw new Error('Group encryption key is not ready');
   const messageId = newMsgId();
   const pending = { id:messageId, senderId:state.accountId, attachmentId:null, attachment:payload,
     createdAt:Date.now(), keyVersion:group.keyVersion, pending:true };
-  group.messages = [...(group.messages || []), pending]; renderPrivateGroupMessages(group);
+  group.messages = [...(group.messages || []), pending];
+  if (group.id === activePrivateGroupId) renderPrivateGroupMessages(group);
   try {
     onProgress?.('Encrypting & sending…');
     const encryptedPayload = await encryptPrivateGroupValue(key, payload);
@@ -393,10 +394,13 @@ async function sendPrivateGroupAttachment(payload, onProgress) {
     if (result.error) throw new Error(result.error);
     pending.attachmentId = attachmentId; pending.createdAt = result.createdAt; pending.keyVersion = result.keyVersion; pending.pending = false;
     queuePrivateGroupNativePreview(group, pending);
-    group.updatedAt = result.createdAt; renderPrivateGroupMessages(group); renderVaultList();
+    group.updatedAt = result.createdAt;
+    if (group.id === activePrivateGroupId) renderPrivateGroupMessages(group);
+    renderVaultList();
   } catch (error) {
     group.messages = (group.messages || []).filter(message => message !== pending);
-    renderPrivateGroupMessages(group); throw error;
+    if (group.id === activePrivateGroupId) renderPrivateGroupMessages(group);
+    throw error;
   }
 }
 
@@ -1071,6 +1075,12 @@ function groupMessageToForwardRec(messageId) {
     const text = privateGroupTextById(messageId);
     return text ? { kind:'text', text } : null;
   }
+  if (message.attachment?.type === 'group-album') {
+    const items = message.attachment.items;
+    if (!Array.isArray(items) || !items.length || !items.every(item => safeImageDataUri(item.mime, item.data))) return null;
+    return { kind:'album', images:items.map(item => ({ fileName:item.name || 'vaultlix-image.jpg',
+      mime:item.mime, base64:item.data, kind:'image', imagePreview:item.imagePreview || null })) };
+  }
   const found = privateGroupAttachmentById(messageId); if (!found) return null;
   const { attachment, mime } = found;
   if (attachment.type === 'group-voice') return { kind:'voice', mime, base64:attachment.data };
@@ -1084,17 +1094,51 @@ function groupMessageToForwardRec(messageId) {
   };
 }
 
+// Use the destination explicitly: forwarding must not switch the visible group
+// or borrow its key, composer, reply state, or draft.
+async function forwardAttachmentToPrivateGroup(groupId, rec) {
+  const state = loadAccountState();
+  const group = privateGroups.get(groupId);
+  const key = group?.keys?.[group.keyVersion];
+  if (!state || !key || group.requiresRekey || rec.viewOnce
+      || !group.members?.some(member => member.accountId === state.accountId && member.active !== false)) return false;
+  if (rec.kind === 'text') {
+    const messageId = newMsgId();
+    const ciphertext = await encryptPrivateGroupValue(key, rec.text);
+    const result = await api('/api/groups/send', { accountId:state.accountId, sessionToken:state.sessionToken,
+      groupId:group.id, messageId, ciphertext });
+    if (result.error) return false;
+    group.messages = [...(group.messages || []), { id:messageId, senderId:state.accountId, text:rec.text,
+      createdAt:result.createdAt, keyVersion:result.keyVersion }];
+    group.updatedAt = result.createdAt;
+    if (group.id === activePrivateGroupId) renderPrivateGroupMessages(group);
+    renderVaultList();
+    return true;
+  }
+  if (!['file', 'album'].includes(rec.kind)) return false;
+  const itemPayload = item => ({ name:item.fileName || 'Vaultlix attachment', mime:item.mime || 'application/octet-stream',
+    size:Math.ceil((item.base64?.length || 0) * 3 / 4), data:item.base64,
+    ...(item.videoThumb ? { videoThumb:item.videoThumb } : {}),
+    ...(item.imagePreview ? { imagePreview:item.imagePreview } : {}),
+    ...(item.pdfPreview ? { pdfPreview:item.pdfPreview, pageCount:item.pageCount || 0 } : {}) });
+  const payload = rec.kind === 'album'
+    ? { type:'group-album', items:rec.images.map(item => itemPayload({ ...item, mime:item.mime || 'image/jpeg' })) }
+    : { type:rec.isImage ? 'group-image' : 'group-file', ...itemPayload(rec) };
+  await sendPrivateGroupAttachment(payload, undefined, group.id);
+  return true;
+}
+
 function forwardPrivateGroupMessage(messageId) {
   closeAllMsgActions();
   const rec = groupMessageToForwardRec(messageId);
   if (!rec) { toast('Could not forward this message'); return; }
-  showForwardAttachmentPicker(rec, { includeActiveRoom:true });
+  showForwardAttachmentPicker(rec, { includeActiveRoom:true, sourceGroupId:activePrivateGroupId });
 }
 function forwardPrivateGroupMessages(messageIds) {
   closeAllMsgActions();
   const recs = messageIds.map(groupMessageToForwardRec).filter(Boolean);
   if (!recs.length) { toast('Nothing here can be forwarded'); return; }
-  showForwardAttachmentPicker(recs, { includeActiveRoom:true });
+  showForwardAttachmentPicker(recs, { includeActiveRoom:true, sourceGroupId:activePrivateGroupId });
 }
 
 // ---- reply ------------------------------------------------------------------
@@ -1329,7 +1373,7 @@ function groupSelectionController() {
         // A single voice note opens the same sheet purely for "Share to another
         // app" (see showForwardAttachmentPicker) — voice notes are never
         // forwarded into another Vaultlix conversation.
-        canForward: (ids.length > 0 && ids.every(item => usableRow(item) && ['text', 'image', 'file'].includes(groupMessageKind(messageOf(item)))))
+        canForward: (ids.length > 0 && ids.every(item => usableRow(item) && ['text', 'image', 'file', 'album'].includes(groupMessageKind(messageOf(item)))))
           || (!!id && usableRow(id) && kind === 'voice'),
         canCopy: ids.length > 0 && ids.every(item => usableRow(item) && groupMessageKind(messageOf(item)) === 'text' && privateGroupTextById(item)),
         canSave: !!id && usableRow(id) && ['image', 'file', 'voice'].includes(kind),
