@@ -15,17 +15,35 @@ test('Golden Hour visibly lifts a real portrait while keeping dimensions and str
   assert.equal(meta.exif, undefined);
   const original = await sharp(bytes).resize(384, 512, { fit:'cover' }).removeAlpha().raw().toBuffer();
   const result = await sharp(output).raw().toBuffer();
-  let delta = 0, beforeY = 0, afterY = 0;
+  let delta = 0, beforeY = 0, afterY = 0, warmthChange = 0;
   for (let i = 0; i < result.length; i++) delta += Math.abs(result[i] - original[i]);
   for (let i = 0; i < result.length; i += 3) {
     beforeY += original[i] * .2126 + original[i+1] * .7152 + original[i+2] * .0722;
     afterY += result[i] * .2126 + result[i+1] * .7152 + result[i+2] * .0722;
+    warmthChange += (result[i] - result[i+2]) - (original[i] - original[i+2]);
   }
   assert.ok(delta / result.length > 8, 'visible grade rather than JPEG noise');
   assert.ok(afterY > beforeY, 'face/scene midtones are lifted rather than darkened');
+  assert.ok(warmthChange / (result.length / 3) > 15, 'golden warmth is measurable, not just extra brightness');
 });
 
-test('identical colours keep identical treatment without moving edges or smoothing texture', async () => {
+test('afternoon light has a broad direction without clipping white or lifting pure black', async () => {
+  const data = Buffer.alloc(128 * 64 * 3, 120);
+  for (let y = 0; y < 16; y++) {
+    data.fill(255, y * 128 * 3, (y * 128 + 16) * 3);
+    data.fill(0, (y * 128 + 16) * 3, (y * 128 + 32) * 3);
+  }
+  const bytes = await sharp(data, { raw:{width:128,height:64,channels:3} }).png().toBuffer();
+  const result = await sharp(await gradeGoldenHour(bytes, 128, 64)).raw().toBuffer();
+  const left = (32 * 128 + 4) * 3, right = (32 * 128 + 123) * 3;
+  assert.ok(result[left+1] - result[right+1] >= 12, 'visible but gradual directional illumination');
+  assert.ok(result[left] > result[left+2] + 15, 'warm rather than white illumination');
+  const white = (8 * 128 + 8) * 3, black = (8 * 128 + 24) * 3;
+  assert.ok(result[white] >= 250 && result[white+1] >= 250 && result[white+2] >= 250);
+  assert.ok(result[black] <= 5 && result[black+1] <= 5 && result[black+2] <= 5);
+});
+
+test('directional lighting keeps edges in place without smoothing texture', async () => {
   const data = Buffer.alloc(64 * 64 * 3);
   for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
     const i = (y * 64 + x) * 3;
@@ -41,7 +59,7 @@ test('identical colours keep identical treatment without moving edges or smoothi
 });
 
 test('clipped black and white inputs cannot spend an attempt on unchanged output', async () => {
-  for (const background of ['#000000', '#ffffff']) {
+  for (const background of ['#000000', '#ffffff', '#fefefe']) {
     const bytes = await sharp({ create:{ width:32, height:32, channels:3, background } }).png().toBuffer();
     await assert.rejects(gradeGoldenHour(bytes, 32, 32), /golden-hour-no-visible-change/);
   }
