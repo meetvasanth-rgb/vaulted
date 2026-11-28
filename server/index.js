@@ -9,7 +9,6 @@ const clientShell = compileClientShell({ clientDir:path.join(__dirname, '../clie
 const crypto = require('crypto');
 const { promisify } = require('util');
 const sharp = require('sharp');
-const { gradeGoldenHour } = require('./golden-hour');
 const webpush = require('web-push');
 const { WebSocketServer } = require('ws');
 const { initializeApp, cert } = require('firebase-admin/app');
@@ -418,10 +417,10 @@ Match the subject to the café's physical scale and camera perspective. Preserve
 Facial identity has absolute priority over the café styling. Treat the uploaded face as an immutable reference: do not redraw, reinterpret, beautify or refine its geometry; do not change the eyes, eyebrows, nose, lips, jaw, facial hair, hairline, expression, age, asymmetry, pores or recognisable marks. Improve only the illumination falling on that same face. If any scene instruction conflicts with identity preservation, leave the face unchanged and adapt the café around it. Avoid visible brands, artificial luxury, empty uncanny interiors, dated décor, blown highlights and muddy facial shadows.`,
   },
   {
-    id:'golden-hour', name:'Golden Hour', note:'Modern outdoor warmth', collection:'Lifestyle', processor:'local', kind:'curated', quality:'high',
+    id:'golden-hour', name:'Golden Hour', note:'Modern outdoor warmth', collection:'Lifestyle', provider:'openai', kind:'curated', quality:'high',
     prompt:`Edit the uploaded photograph conservatively as the same real photograph captured in flattering late-afternoon golden light. The source pixels are authoritative for the person and scene. Preserve the exact face geometry, expression, gaze, eyes, eyebrows, nose, lips, jaw, hairline, hairstyle, apparent age, skin tone and texture; preserve the exact body proportions, pose, hand placement, clothing, accessories, camera position, lens perspective, crop, background architecture, objects and text. Do not regenerate, beautify, restage, reframe, move, slim or replace the person or location.
 
-Change only the photographic light and colour: add subtle warm directional sunlight that follows the source's real light direction, sufficient neutral-to-cool sky fill to keep both eyes and shadow-side facial detail clear, restrained natural catchlights, controlled highlights and believable soft shadows. Keep the person's source skin hue and depth neutral and accurate; golden warmth may touch illuminated surfaces but must not tan, orange-shift, darken or recolour the face. The result must look like the identical camera frame professionally relit and graded, not a newly generated portrait. Avoid fantasy skies, artificial sun flares, background replacement, dramatic sunset effects and excessive orange grading.`,
+Change only the photographic light and colour: add clearly visible, flattering late-afternoon warm directional sunlight that follows the source's real light direction, sufficient neutral-to-cool sky fill to keep both eyes and shadow-side facial detail clear, preserve existing eye reflections, controlled highlights and believable soft shadows. Keep the person's source skin hue and depth neutral and accurate; golden warmth may touch illuminated surfaces but must not tan, orange-shift, darken or recolour the face. The result must look like the identical camera frame professionally relit and graded, not a newly generated portrait. Facial identity and texture have absolute priority over the lighting effect. Do not redraw, retouch, smooth or refine the face, add catchlights, remove blemishes or invent facial detail. If a lighting change would require altering facial features, reduce that change and preserve the original face. The golden-hour light must be visibly different from the input through warm environmental highlights, soft directional light and natural shadow fill, rather than returning an unchanged photograph or applying only a faint tint. Avoid fantasy skies, artificial sun flares, background replacement, dramatic sunset effects and excessive orange grading.`,
   },
 ]);
 const FREE_NUMBER_INACTIVITY_MS = 730 * DAY_MS;
@@ -1487,7 +1486,7 @@ function publicDailyLookStyles(now = Date.now()) {
   return styles.map(style => ({
     id:style.id, name:style.name, note:style.note, collection:style.collection || 'Portraits',
     featured:style.id === featuredId,
-    available:style.processor === 'local' || (style.provider === 'gemini' ? !!GEMINI_API_KEY : !!OPENAI_API_KEY),
+    available:style.provider === 'gemini' ? !!GEMINI_API_KEY : !!OPENAI_API_KEY,
   }));
 }
 
@@ -1603,6 +1602,9 @@ function dailyLookDirectedPrompt(style, variantIndex, blemishLevel = 'soften') {
   const enhancerLook = style.id === 'surprise-enhancer'
     ? dailyLookRotationItem(ENHANCER_LOOKS, variantIndex)
     : null;
+  if (style.id === 'golden-hour') {
+    return `${SOURCE_PHOTO_ENHANCEMENT_PROMPT}\n\nSelected enhancement: ${style.name}\n${style.prompt}`;
+  }
   if (style.collection === 'Family & Friends' || style.collection === 'Mirror Selfies') {
     const contract = style.id === 'mirror-cleanup'
       ? SOURCE_PHOTO_ENHANCEMENT_PROMPT.replace('Improve only exposure, white balance, highlight and shadow detail, and restrained capture noise according to the selected recipe.', 'Improve exposure, white balance, highlight and shadow detail, and restrained capture noise. As the only exception to scene preservation, allow the strictly local surface-mark cleanup described below; all identity and occlusion rules still apply.')
@@ -1634,11 +1636,6 @@ async function finishDailyLookImage(base64, sourceWidth, sourceHeight) {
     .resize(sourceWidth, sourceHeight, { fit:'cover', position:'centre' })
     .jpeg({ quality:90, chromaSubsampling:'4:4:4' })
     .toBuffer();
-  return `data:image/jpeg;base64,${output.toString('base64')}`;
-}
-
-async function createLocalGoldenHour(image, canvas) {
-  const output = await gradeGoldenHour(image.bytes, canvas.sourceWidth, canvas.sourceHeight);
   return `data:image/jpeg;base64,${output.toString('base64')}`;
 }
 
@@ -1716,7 +1713,6 @@ async function createGeminiDailyLook(image, style, apiKey, directedPrompt, canva
 async function createDailyLook(image, style, apiKey, variantIndex = 0, dimensions = null, blemishLevel = 'soften') {
   const directedPrompt = dailyLookDirectedPrompt(style, variantIndex, blemishLevel);
   const canvas = dailyLookCanvas(style, dimensions);
-  if (style.processor === 'local') return createLocalGoldenHour(image, canvas);
   if (style.provider === 'gemini') return createGeminiDailyLook(image, style, apiKey, directedPrompt, canvas);
   return createOpenAiDailyLook(image, style, apiKey, directedPrompt, canvas);
 }
@@ -4654,8 +4650,8 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const image = parseDailyLookImage(d.image);
     if (!style || !image) return resErr(res, 'Choose a valid photo and style.', 400);
     if (d.portraitConsentVersion !== 1) return resErr(res, 'Allow Portrait Studio photo processing before creating a portrait.', 403);
-    const apiKey = style.processor === 'local' ? '' : (style.provider === 'gemini' ? GEMINI_API_KEY : OPENAI_API_KEY);
-    if (style.processor !== 'local' && !apiKey) return resErr(res, 'This portrait style is temporarily unavailable.', 503);
+    const apiKey = style.provider === 'gemini' ? GEMINI_API_KEY : OPENAI_API_KEY;
+    if (!apiKey) return resErr(res, 'This portrait style is temporarily unavailable.', 503);
     const usage = dailyLookUsage(account, now);
     if (usage.remaining <= 0) {
       res.setHeader('Cache-Control', 'no-store');
@@ -4668,7 +4664,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       // OpenAI edits are pre-moderated with the same provider. Gemini image
       // edits use Gemini's built-in image safety filters instead of sending
       // the source portrait to a second provider.
-      if (style.processor !== 'local' && style.provider !== 'gemini' && await moderateDailyLookImage(d.image, apiKey)) {
+      if (style.provider !== 'gemini' && await moderateDailyLookImage(d.image, apiKey)) {
         await releaseDailyLookClaim(d.accountId);
         return resErr(res, 'This photo cannot be used in Portrait Studio. Choose another.', 400);
       }
@@ -4707,9 +4703,6 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     } catch (error) {
       await releaseDailyLookClaim(d.accountId).catch(() => {});
       console.warn(`Daily Look provider request failed (${String(error?.message || 'unknown').slice(0, 32)}).`);
-      if (error?.message === 'golden-hour-no-visible-change') {
-        return resErr(res, 'Golden Hour could not make a visible lighting change to this photo. No portrait attempt was used. Try another photo.', 422);
-      }
       return resErr(res, 'Portrait Studio could not create your portrait. Your daily creation is still available.', 502);
     }
   }

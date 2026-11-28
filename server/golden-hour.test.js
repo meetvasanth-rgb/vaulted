@@ -3,69 +3,51 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const sharp = require('sharp');
-const { gradeGoldenHour } = require('./golden-hour');
+const source = fs.readFileSync('server/index.js', 'utf8');
 
-test('Golden Hour visibly lifts a real portrait while keeping dimensions and stripping metadata', async () => {
-  const bytes = fs.readFileSync('client/portrait-samples/selfie-soft-daylight-before.v2.webp');
-  const output = await gradeGoldenHour(bytes, 384, 512);
-  const meta = await sharp(output).metadata();
-  assert.equal(meta.width, 384);
-  assert.equal(meta.height, 512);
-  assert.equal(meta.exif, undefined);
-  const original = await sharp(bytes).resize(384, 512, { fit:'cover' }).removeAlpha().raw().toBuffer();
-  const result = await sharp(output).raw().toBuffer();
-  let delta = 0, beforeY = 0, afterY = 0, warmthChange = 0;
-  for (let i = 0; i < result.length; i++) delta += Math.abs(result[i] - original[i]);
-  for (let i = 0; i < result.length; i += 3) {
-    beforeY += original[i] * .2126 + original[i+1] * .7152 + original[i+2] * .0722;
-    afterY += result[i] * .2126 + result[i+1] * .7152 + result[i+2] * .0722;
-    warmthChange += (result[i] - result[i+2]) - (original[i] - original[i+2]);
-  }
-  assert.ok(delta / result.length > 8, 'visible grade rather than JPEG noise');
-  assert.ok(afterY > beforeY, 'face/scene midtones are lifted rather than darkened');
-  assert.ok(warmthChange / (result.length / 3) > 15, 'golden warmth is measurable, not just extra brightness');
+function presetHarness() {
+  const ctx = vm.createContext({});
+  const catalogStart = source.indexOf('const DAILY_LOOK_STYLES = Object.freeze(');
+  const catalogEnd = source.indexOf('\n]);', catalogStart) + 4;
+  const identityStart = source.indexOf('const SOURCE_PHOTO_ENHANCEMENT_PROMPT =');
+  const identityEnd = source.indexOf('const DAILY_LOOK_BLEMISH_PROMPTS', identityStart);
+  const promptStart = source.indexOf('function dailyLookDirectedPrompt(');
+  const promptEnd = source.indexOf('function dailyLookCanvas(', promptStart);
+  const createStart = source.indexOf('async function createDailyLook(');
+  const createEnd = source.indexOf('async function claimDailyLook(', createStart);
+  vm.runInContext(source.slice(catalogStart, catalogEnd) + source.slice(identityStart, identityEnd) + source.slice(promptStart, promptEnd) + source.slice(createStart, createEnd) + `
+    style = DAILY_LOOK_STYLES.find(style => style.id === 'golden-hour');
+    dailyLookCanvas = () => ({sourceWidth:640, sourceHeight:480});
+    createGeminiDailyLook = () => {throw Error('unexpected Gemini route')};
+    createOpenAiDailyLook = async (image, style, key, prompt, canvas) => ({image, style, key, prompt, canvas});
+  `, ctx);
+  return ctx;
+}
+
+test('Golden Hour sends the original source to OpenAI with a dedicated face-preservation contract', async () => {
+  const ctx = presetHarness();
+  assert.equal(ctx.style.provider, 'openai');
+  assert.equal(ctx.style.processor, undefined);
+  assert.equal(ctx.style.quality, 'high');
+  const image = {bytes:Buffer.from('source-image')};
+  const result = await ctx.createDailyLook(image, ctx.style, 'test-key');
+  assert.equal(result.image, image);
+  assert.equal(result.key, 'test-key');
+  assert.match(result.prompt, /Preserve natural pores and skin texture/);
+  assert.match(result.prompt, /Facial identity and texture have absolute priority/);
+  assert.match(result.prompt, /clearly visible.*directional sunlight/);
+  assert.match(result.prompt, /do not redraw, retouch, smooth or refine the face/i);
+  assert.doesNotMatch(result.prompt, /Mandatory Lifestyle collection finishing|complete professional portrait-lighting pass/);
 });
 
-test('afternoon light has a broad direction without clipping white or lifting pure black', async () => {
-  const data = Buffer.alloc(128 * 64 * 3, 120);
-  for (let y = 0; y < 16; y++) {
-    data.fill(255, y * 128 * 3, (y * 128 + 16) * 3);
-    data.fill(0, (y * 128 + 16) * 3, (y * 128 + 32) * 3);
-  }
-  const bytes = await sharp(data, { raw:{width:128,height:64,channels:3} }).png().toBuffer();
-  const result = await sharp(await gradeGoldenHour(bytes, 128, 64)).raw().toBuffer();
-  const left = (32 * 128 + 4) * 3, right = (32 * 128 + 123) * 3;
-  assert.ok(result[left+1] - result[right+1] >= 12, 'visible but gradual directional illumination');
-  assert.ok(result[left] > result[left+2] + 15, 'warm rather than white illumination');
-  const white = (8 * 128 + 8) * 3, black = (8 * 128 + 24) * 3;
-  assert.ok(result[white] >= 250 && result[white+1] >= 250 && result[white+2] >= 250);
-  assert.ok(result[black] <= 5 && result[black+1] <= 5 && result[black+2] <= 5);
+test('OpenAI failure is surfaced rather than silently returning a local filter', async () => {
+  const ctx = presetHarness();
+  ctx.createOpenAiDailyLook = async () => {throw Error('provider-failed')};
+  await assert.rejects(ctx.createDailyLook({}, ctx.style, 'test-key'), /provider-failed/);
+  assert.doesNotMatch(source, /createLocalGoldenHour|gradeGoldenHour|processor === 'local'/);
 });
 
-test('directional lighting keeps edges in place without smoothing texture', async () => {
-  const data = Buffer.alloc(64 * 64 * 3);
-  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
-    const i = (y * 64 + x) * 3;
-    const v = x < 32 ? 70 : 150;
-    data[i] = v + (y % 2) * 12; data[i+1] = v; data[i+2] = v - 15;
-  }
-  const bytes = await sharp(data, { raw:{ width:64, height:64, channels:3 } }).png().toBuffer();
-  const output = await sharp(await gradeGoldenHour(bytes, 64, 64)).raw().toBuffer();
-  for (let y = 0; y < 64; y++) {
-    assert.ok(output[(y * 64 + 32) * 3] - output[(y * 64 + 31) * 3] > 60, 'edge remains at original column');
-  }
-  assert.ok(output[(17 * 64 + 10) * 3] - output[(16 * 64 + 10) * 3] >= 8, 'fine texture survives');
-});
-
-test('clipped black and white inputs cannot spend an attempt on unchanged output', async () => {
-  for (const background of ['#000000', '#ffffff', '#fefefe']) {
-    const bytes = await sharp({ create:{ width:32, height:32, channels:3, background } }).png().toBuffer();
-    await assert.rejects(gradeGoldenHour(bytes, 32, 32), /golden-hour-no-visible-change/);
-  }
-});
-
-test('the real route releases its claim and leaves the daily count untouched when the grade has no visible effect', async () => {
+test('Golden Hour provider failures release the claim without spending a daily creation', async () => {
   const source = fs.readFileSync('server/index.js', 'utf8');
   const route = source.slice(source.indexOf("  if (path === '/api/account/daily-look' && method === 'POST')"), source.indexOf("  if (path === '/api/account/sync' && method === 'POST')"));
   const account = { dailyLookGenerationCount:4 };
@@ -73,18 +55,19 @@ test('the real route releases its claim and leaves the daily count untouched whe
   const ctx = vm.createContext({ Date, Math, String, Number, console:{warn(){}},
     validAccountId:()=>true, authenticateAccountSession:()=>account,
     dailyLookDayWindow:()=>({startedAt:1}), rateLimited:async()=>false,
-    DAILY_LOOK_STYLES:[{id:'golden-hour',processor:'local'}], parseDailyLookImage:()=>({}),
+    DAILY_LOOK_STYLES:[{id:'golden-hour',provider:'openai'}], parseDailyLookImage:()=>({}),
     dailyLookUsage:()=>({count:4,remaining:11}), DAILY_LOOK_DAILY_LIMIT:15,
     claimDailyLook:async()=>true, releaseDailyLookClaim:async()=>{released++},
     dailyLookSourceDimensions:async()=>({width:32,height:32}), dailyLookVariantIndex:()=>0,
-    createDailyLook:async()=>{throw Error('golden-hour-no-visible-change')},
+    OPENAI_API_KEY:'test-key', moderateDailyLookImage:async()=>false,
+    createDailyLook:async()=>{throw Error('image-502-provider')},
     persistAccount:async()=>{persisted++},
     resErr:(_,error,status)=>({error,status}), res200:()=>{throw Error('unexpected success')}
   });
   vm.runInContext(`async function run(){ const path='/api/account/daily-look',method='POST',ip='test'; const d={accountId:'test',styleId:'golden-hour',portraitConsentVersion:1}; const res={setHeader(){}}; ${route} }`, ctx);
   const result = await ctx.run();
-  assert.equal(result.status, 422);
-  assert.match(result.error, /No portrait attempt was used/);
+  assert.equal(result.status, 502);
+  assert.match(result.error, /Your daily creation is still available/);
   assert.equal(released, 1);
   assert.equal(persisted, 0);
   assert.equal(account.dailyLookGenerationCount, 4);
