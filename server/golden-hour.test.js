@@ -37,7 +37,10 @@ test('Golden Hour sends the original source to OpenAI with a dedicated face-pres
   assert.match(result.prompt, /Facial identity and texture have absolute priority/);
   assert.match(result.prompt, /clearly visible.*directional sunlight/);
   assert.match(result.prompt, /do not redraw, retouch, smooth or refine the face/i);
-  assert.doesNotMatch(result.prompt, /Mandatory Lifestyle collection finishing|complete professional portrait-lighting pass/);
+  assert.match(result.prompt, /LIGHTING-ONLY EDIT/);
+  assert.match(result.prompt, /NO skin smoothing, denoising, noise reduction, sharpening/);
+  assert.match(result.prompt, /reduce or omit that effect instead/);
+  assert.doesNotMatch(result.prompt, /Mandatory Lifestyle collection finishing|complete professional portrait-lighting pass|restrained capture noise/);
 });
 
 test('OpenAI failure is surfaced rather than silently returning a local filter', async () => {
