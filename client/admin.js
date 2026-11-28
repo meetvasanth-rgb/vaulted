@@ -383,8 +383,10 @@
     const title=$('announcement-title').value.trim();
     const body=$('announcement-body').value.trim();
     const all=$('announcement-audience').value==='all';
-    $('announcement-preview-title').textContent=title || 'Vaultlix update';
-    $('announcement-preview-body').textContent=body || 'Your message preview appears here.';
+    $('announcement-preview-title').textContent=title;
+    $('announcement-preview-title').hidden=!title;
+    $('announcement-preview-body').textContent=body;
+    $('announcement-preview-body').hidden=!body;
     $('announcement-counter').textContent=`${$('announcement-body').value.length} / 180`;
     const scheduled=$('announcement-schedule-enabled').checked;
     const expiry=$('announcement-expiry').value==='custom'?$('announcement-custom-expiry').value:$('announcement-expiry').value;
@@ -414,6 +416,7 @@
     const button=$('announcement-submit');button.disabled=true;
     $('announcement-status').textContent=scheduled?'Scheduling update…':'Publishing update…';
     try {
+      if(!$('announcement-title').value.trim()&&!$('announcement-body').value.trim()&&!announcementMediaDataUrl)throw Error('Add a title, message, image or video.');
       if(scheduled&&!$('announcement-scheduled-at').value)throw Error('Choose the date and time to publish this update.');
       const scheduledAt=scheduled?new Date($('announcement-scheduled-at').value).toISOString():null;
       const expiryHours=Number($('announcement-expiry').value==='custom'?$('announcement-custom-expiry').value:$('announcement-expiry').value);

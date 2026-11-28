@@ -2,7 +2,7 @@
 // shell available for an offline launch. API responses, ciphertext, account
 // data, messages and keys are deliberately never written to this cache.
 
-const APP_SHELL_CACHE = 'vaultlix-app-shell-v312';
+const APP_SHELL_CACHE = 'vaultlix-app-shell-v313';
 const APP_SHELL_FILES = [
   '/',
   '/index.html',
@@ -160,8 +160,8 @@ self.addEventListener('push', (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch (e) {}
 
-  const title = data.title || 'Vaultlix';
-  const body = data.body || 'New message';
+  const title = data.announcement ? (data.title || '') : (data.title || 'Vaultlix');
+  const body = data.announcement ? (data.body || '') : (data.body || 'New message');
   const tag = data.tag || 'vaultlix-message';
   const isCall = !!data.isCall;
   const isAnnouncement = !!data.announcement;

@@ -65,6 +65,13 @@ test('announcement endpoint requires admin authentication and never defaults to 
   };
   assert.equal((await send({ title:'Update', body:'Ready', platform:'all', audience:'test' }, '')).status, 404);
   assert.equal((await send({ title:'Update', body:'Ready', platform:'all', audience:'all' })).status, 400);
+  const emptySend = await send({ title:'', body:'', platform:'all', audience:'test' });
+  assert.equal(emptySend.status,400);
+  const plainVideo = await send({ title:'', body:'', platform:'all', audience:'test', mediaDataUrl:`data:video/mp4;base64,${Buffer.from('test-video').toString('base64')}` });
+  assert.equal(plainVideo.status,503); // This isolated test has no object-storage credentials.
+  assert.match(plainVideo.data.error,/media storage/i);
+  const invalidVideo = await send({ title:'', body:'', platform:'all', audience:'test', mediaDataUrl:'not-a-video' });
+  assert.equal(invalidVideo.status,400);
   const testSend = await send({ title:'Update', body:'Ready', platform:'all', audience:'test' });
   assert.equal(testSend.status, 200);
   assert.deepEqual({ targeted:testSend.data.targeted, delivered:testSend.data.delivered, audience:testSend.data.audience }, { targeted:0, delivered:0, audience:'test' });
@@ -98,4 +105,17 @@ test('admin screen exposes the protected composer and defaults it to test accoun
   assert.match(client, /action==='daily-look'.*openDailyLook\(\).*action==='status-composer'.*openStatusComposer\(\)/s);
   assert.match(server, /ctaLabel:record\.ctaLabel, ctaAction:record\.ctaAction/);
   assert.match(server, /img-src 'self' data:/);
+});
+
+test('media-only announcements preserve blank copy; empty updates and overlong optional fields are rejected', () => {
+  const base = { platform:'all', audience:'test', title:'  ',body:'\n' };
+  assert.deepEqual(validateAnnouncement(base,{hasMedia:true}).value,{platform:'all',audience:'test',title:'',body:''});
+  assert.match(validateAnnouncement(base).error,/Add a title, message, image or video/);
+  assert.equal(validateAnnouncement({...base,title:'Only a title'}).value.body,'');
+  assert.equal(validateAnnouncement({...base,body:'Only a message'}).value.title,'');
+  assert.match(validateAnnouncement({...base,title:'x'.repeat(61)},{hasMedia:true}).error,/title/);
+  assert.match(validateAnnouncement({...base,body:'x'.repeat(181)},{hasMedia:true}).error,/message/);
+  assert.match(validateAnnouncement({...base,audience:'all'},{hasMedia:true}).error,/Confirm/);
+  const payload = buildAnnouncementPayload({title:'',body:''});
+  assert.equal(payload.title,''); assert.equal(payload.body,'');
 });

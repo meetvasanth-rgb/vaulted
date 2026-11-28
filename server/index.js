@@ -956,7 +956,8 @@ function sendApnsNotification(member, payload, ttlSeconds) {
   try { parsed = JSON.parse(payload); } catch (e) { return Promise.resolve(false); }
   const body = JSON.stringify({
     aps: {
-      alert: { title: parsed.title || 'Vaultlix', body: parsed.body || 'New activity' },
+      alert: { title: parsed.announcement ? (parsed.title || '') : (parsed.title || 'Vaultlix'),
+        body: parsed.announcement ? (parsed.body || '') : (parsed.body || 'New activity') },
       // Calls always ring with the standard sound; only message-type alerts
       // follow the person's chosen tone ('none' sends no sound at all).
       ...(() => {
@@ -1083,8 +1084,8 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         announcement: parsed.announcement ? 'true' : 'false',
         updateId: parsed.announcement ? String(parsed.updateId || '') : '',
         thumbnailUrl: parsed.announcement ? String(parsed.thumbnailUrl || '') : '',
-        title: String(parsed.title || 'Vaultlix'),
-        body: String(parsed.body || 'New activity'),
+        title: String(parsed.announcement ? (parsed.title || '') : (parsed.title || 'Vaultlix')),
+        body: String(parsed.announcement ? (parsed.body || '') : (parsed.body || 'New activity')),
       },
       android: {
         priority: 'high',
@@ -1111,8 +1112,8 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
     const privacyNotification = parsed.privacyEvent === 'screenshot' || parsed.privacyEvent === 'screen-recording';
     if (!parsed.isCall && !parsed.isCallEnd && !parsed.missedCall && (!parsed.msgId || privacyNotification) && !parsed.groupId && (!parsed.announcement || !nativeAnnouncement)) {
       message.notification = {
-        title: parsed.title || 'Vaultlix',
-        body: parsed.body || 'New activity',
+        title: parsed.announcement ? (parsed.title || '') : (parsed.title || 'Vaultlix'),
+        body: parsed.announcement ? (parsed.body || '') : (parsed.body || 'New activity'),
         ...(parsed.thumbnailUrl ? { imageUrl:String(parsed.thumbnailUrl) } : {}),
       };
       message.android.notification = {
@@ -6873,12 +6874,12 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     }
     if (path === '/api/admin/announcements') {
       res.setHeader('Cache-Control','no-store');
-      const checked = validateAnnouncement(d);
+      const decodedMedia = decodeAnnouncementMedia(d.mediaDataUrl);
+      if (decodedMedia.error) return resErr(res, decodedMedia.error, 400);
+      const checked = validateAnnouncement(d, { hasMedia:!!decodedMedia.value });
       if (checked.error) return resErr(res, checked.error, 400);
       const decodedThumbnail = decodeAnnouncementThumbnail(d.thumbnailDataUrl);
       if (decodedThumbnail.error) return resErr(res, decodedThumbnail.error, 400);
-      const decodedMedia = decodeAnnouncementMedia(d.mediaDataUrl);
-      if (decodedMedia.error) return resErr(res, decodedMedia.error, 400);
       const experience = validateAnnouncementExperience(d);
       if (experience.error) return resErr(res, experience.error, 400);
       let scheduledAt = null;

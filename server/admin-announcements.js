@@ -16,13 +16,14 @@ function cleanText(value) {
   return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
 }
 
-function validateAnnouncement(input = {}) {
+function validateAnnouncement(input = {}, { hasMedia = false } = {}) {
   const title = cleanText(input.title);
   const body = cleanText(input.body);
   const platform = PLATFORMS.has(input.platform) ? input.platform : '';
   const audience = AUDIENCES.has(input.audience) ? input.audience : '';
-  if (!title || title.length > TITLE_MAX) return { error:`Enter a title between 1 and ${TITLE_MAX} characters.` };
-  if (!body || body.length > BODY_MAX) return { error:`Enter a message between 1 and ${BODY_MAX} characters.` };
+  if (title.length > TITLE_MAX) return { error:`Keep the title within ${TITLE_MAX} characters.` };
+  if (body.length > BODY_MAX) return { error:`Keep the message within ${BODY_MAX} characters.` };
+  if (!title && !body && !hasMedia) return { error:'Add a title, message, image or video.' };
   if (!platform) return { error:'Choose iOS, Android or both platforms.' };
   if (!audience) return { error:'Choose test accounts or all opted-in users.' };
   if (audience === 'all' && input.confirmAll !== true) return { error:'Confirm the all-user broadcast before sending.' };
