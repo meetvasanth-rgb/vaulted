@@ -38,6 +38,9 @@ test('Golden Hour sends the original source to OpenAI with a dedicated face-pres
   assert.match(result.prompt, /clearly visible.*directional sunlight/);
   assert.match(result.prompt, /do not redraw, retouch, smooth or refine the face/i);
   assert.match(result.prompt, /LIGHTING-ONLY EDIT/);
+  assert.match(result.prompt, /visible tooth count, individual tooth shapes and sizes/);
+  assert.match(result.prompt, /No dental correction or smile enhancement/);
+  assert.match(result.prompt, /do not close gaps, correct a bite, symmetrise the smile or invent teeth/);
   assert.match(result.prompt, /NO skin smoothing, denoising, noise reduction, sharpening/);
   assert.match(result.prompt, /reduce or omit that effect instead/);
   assert.doesNotMatch(result.prompt, /Mandatory Lifestyle collection finishing|complete professional portrait-lighting pass|restrained capture noise/);
